@@ -36,7 +36,7 @@ typedef enum
 } receiver_mode_t;
 
 // Commands (usb vendor request) shared between Firmware and Host.
-#define AIRSPY_CMD_MAX (27)
+#define AIRSPY_CMD_MAX (37)
 typedef enum
 {
   AIRSPY_INVALID                    = 0 ,
@@ -66,8 +66,26 @@ typedef enum
   AIRSPY_GPIODIR_READ               = 24,
   AIRSPY_GET_SAMPLERATES            = 25,
   AIRSPY_SET_PACKING                = 26,
-  AIRSPY_SPIFLASH_ERASE_SECTOR      = AIRSPY_CMD_MAX
+  AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
+    /* 28 to 34 are assigned by later features */
+    /* Debug access, see airspy_debug: */
+    AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
+    AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
+    AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
 } airspy_vendor_request;
+
+typedef struct
+{
+  uint32_t core; /* 0 = M0 (runs in the USB request handler), 1 = M4 (runs in its main loop) */
+  uint32_t address; /* function address; the Thumb bit is added by the device */
+  uint32_t r[4];    /* arguments */
+} airspy_call_request_t;
+
+typedef struct
+{
+  uint32_t status; /* 0 = done (r0 valid), 1 = still running on the M4, 2 = bad request */
+  uint32_t r0;
+} airspy_call_result_t;
 
 typedef enum
 {

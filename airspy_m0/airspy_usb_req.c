@@ -41,6 +41,8 @@
 #include <usb_queue.h>
 #include "usb_descriptor.h"
 #include "airspy_usb_req.h"
+#include "airspy_debug.h"
+#include "signal_mcu.h"
 
 #include "airspy_m0.h"
 #include "airspy_commands.h"
@@ -896,6 +898,122 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 }
 
 /* ID 1 to X corresponds to user endpoint->setup.request */
+static uint8_t mem_buffer[64] __attribute__ ((aligned(4)));
+static airspy_call_request_t call_request;
+static airspy_call_result_t call_result;
+
+static void mem_copy(void* dst, const void* src, uint32_t len)
+{
+  if((((uint32_t)dst | (uint32_t)src | len) & 3) == 0)
+  {
+    volatile uint32_t* d = (volatile uint32_t*)dst;
+    const volatile uint32_t* s = (const volatile uint32_t*)src;
+    for(len /= 4; len; len--)
+      *d++ = *s++;
+  }
+  else
+  {
+    volatile uint8_t* d = (volatile uint8_t*)dst;
+    const volatile uint8_t* s = (const volatile uint8_t*)src;
+    while(len--)
+      *d++ = *s++;
+  }
+}
+
+usb_request_status_t usb_vendor_request_mem_read(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t addr = ((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value;
+    uint32_t len = endpoint->setup.length;
+    if(len == 0 || len > sizeof(mem_buffer))
+      return USB_REQUEST_STATUS_STALL;
+    mem_copy(mem_buffer, (const void*)addr, len);
+    usb_transfer_schedule_block(endpoint->in, mem_buffer, len);
+    usb_transfer_schedule_ack(endpoint->out);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
+usb_request_status_t usb_vendor_request_mem_write(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  uint32_t addr = ((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value;
+  uint32_t len = endpoint->setup.length;
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    if(len == 0 || len > sizeof(mem_buffer))
+      return USB_REQUEST_STATUS_STALL;
+    usb_transfer_schedule_block(endpoint->out, mem_buffer, len);
+  }
+  else if(stage == USB_TRANSFER_STAGE_DATA)
+  {
+    mem_copy((void*)addr, mem_buffer, len);
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
+typedef uint32_t (*dbg_call_fn_t)(uint32_t, uint32_t, uint32_t, uint32_t);
+
+usb_request_status_t usb_vendor_request_call(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(endpoint->setup.request_type & 0x80)
+  {
+    if(stage == USB_TRANSFER_STAGE_SETUP)
+    {
+      uint32_t len = sizeof(call_result);
+      if(len > endpoint->setup.length)
+        len = endpoint->setup.length;
+      if(call_request.core == 1)
+      {
+        call_result.status = AIRSPY_DEBUG_MAILBOX->pending ? 1 : 0;
+        call_result.r0 = AIRSPY_DEBUG_MAILBOX->result;
+      }
+      usb_transfer_schedule_block(endpoint->in, &call_result, len);
+      usb_transfer_schedule_ack(endpoint->out);
+    }
+    return USB_REQUEST_STATUS_OK;
+  }
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    if(endpoint->setup.length != sizeof(call_request))
+      return USB_REQUEST_STATUS_STALL;
+    usb_transfer_schedule_block(endpoint->out, &call_request, sizeof(call_request));
+  }
+  else if(stage == USB_TRANSFER_STAGE_DATA)
+  {
+    if(call_request.address < 0x1000)
+    {
+      call_result.status = 2; /* a null call would only fault the core */
+    }
+    else if(call_request.core == 0)
+    {
+      dbg_call_fn_t fn = (dbg_call_fn_t)(call_request.address | 1);
+      call_result.r0 = fn(call_request.r[0], call_request.r[1], call_request.r[2], call_request.r[3]);
+      call_result.status = 0;
+    }
+    else if(call_request.core == 1)
+    {
+      AIRSPY_DEBUG_MAILBOX->address = call_request.address;
+      AIRSPY_DEBUG_MAILBOX->args[0] = call_request.r[0];
+      AIRSPY_DEBUG_MAILBOX->args[1] = call_request.r[1];
+      AIRSPY_DEBUG_MAILBOX->args[2] = call_request.r[2];
+      AIRSPY_DEBUG_MAILBOX->args[3] = call_request.r[3];
+      AIRSPY_DEBUG_MAILBOX->pending = 1;
+      signal_sev();
+    }
+    else
+    {
+      call_result.status = 2;
+    }
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
 usb_request_handler_fn vendor_request_handler[AIRSPY_CMD_MAX+1];
 
 void airspy_usb_req_init(void)
@@ -950,6 +1068,9 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_SET_PACKING] = usb_vendor_request_set_packing_command;
 
   vendor_request_handler[AIRSPY_SPIFLASH_ERASE_SECTOR] = usb_vendor_request_erase_sector_spiflash;
+  vendor_request_handler[AIRSPY_MEM_READ] = usb_vendor_request_mem_read;
+  vendor_request_handler[AIRSPY_MEM_WRITE] = usb_vendor_request_mem_write;
+  vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

@@ -40,6 +40,7 @@
 #include <signal_mcu.h>
 
 #include "adchs.h"
+#include "airspy_debug.h"
 
 #include "m0_bin.h"
 #include "m0s_bin.h"
@@ -466,6 +467,8 @@ int main(void)
   nvic_enable_irq(NVIC_DMA_IRQ);
   nvic_enable_irq(NVIC_M0CORE_IRQ);
 
+  AIRSPY_DEBUG_MAILBOX->pending = 0; /* RAM is not cleared at boot */
+
   adchs_stop();
   adchs_stopped = 1;
   adchs_started = 0;
@@ -496,6 +499,14 @@ int main(void)
   while(true)
   {
     signal_wfe();
+
+    if(AIRSPY_DEBUG_MAILBOX->pending)
+    {
+      typedef uint32_t (*dbg_call_fn_t)(uint32_t, uint32_t, uint32_t, uint32_t);
+      dbg_call_fn_t fn = (dbg_call_fn_t)(AIRSPY_DEBUG_MAILBOX->address | 1);
+      AIRSPY_DEBUG_MAILBOX->result = fn(AIRSPY_DEBUG_MAILBOX->args[0], AIRSPY_DEBUG_MAILBOX->args[1], AIRSPY_DEBUG_MAILBOX->args[2], AIRSPY_DEBUG_MAILBOX->args[3]);
+      AIRSPY_DEBUG_MAILBOX->pending = 0;
+    }
   
     if(use_packing)
     {
