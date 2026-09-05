@@ -75,18 +75,17 @@ images: $(BINARY).images
 flash: $(BINARY).flash
 
 program: $(BINARY).dfu
-	$(Q)dfu-util --device 1fc9:000c --alt 0 --download $(BINARY).dfu
+	$(Q)dfu-util -d 1fc9:000c -t 2048 -R -D $(BINARY).dfu
 
 %.images: %.bin %.hex %.srec %.list
 	@#echo "*** $* images generated ***"
 
+# LPC43xx ROM DFU image: 16-byte boot header
 %.dfu: %.bin
-	$(Q)rm -f _tmp.dfu _header.bin
-	$(Q)cp $(*).bin _tmp.dfu
-	$(Q)dfu-suffix --vid=0x1fc9 --pid=0x000c --did=0x0 -a _tmp.dfu
-	$(Q)python -c "import os.path; import struct; print('0000000: da ff ' + ' '.join(map(lambda s: '%02x' % ord(s), struct.pack('<H', os.path.getsize('$(*).bin') / 512 + 1))) + ' ff ff ff ff')" | xxd -g1 -r > _header.bin
-	$(Q)cat _header.bin _tmp.dfu >$(*).dfu
-	$(Q)rm -f _tmp.dfu _header.bin
+	$(Q)rm -f _header.bin
+	$(Q)python -c "import os,struct,sys; d=struct.pack('<BBH8sI',0x1a,0x3f,(os.path.getsize('$(*).bin')+511)//512,b'',0xffffffff); getattr(sys.stdout,'buffer',sys.stdout).write(d)" > _header.bin
+	$(Q)cat _header.bin $(*).bin >$(*).dfu
+	$(Q)rm -f _header.bin
 
 %.bin: %.elf
 	@#printf "  OBJCOPY $(*).bin\n"
