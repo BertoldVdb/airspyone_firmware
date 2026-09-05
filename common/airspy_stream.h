@@ -42,6 +42,9 @@ extern "C"
 /* Packed: one chunk is one slot */
 #define AIRSPY_STREAM_CHUNK_BYTES_PACKED    ((AIRSPY_STREAM_SLOT_SIZE / 4) * 3)
 
+/* Transfers the M0 can hold in the USB controller at once */
+#define AIRSPY_STREAM_USB_POOL              (4)
+
 /* Stream state, placed at cm4_data_share (AHB SRAM visible to both cores) */
 typedef struct
 {
@@ -51,7 +54,7 @@ typedef struct
   volatile uint32_t ring_chunks;  /* number of chunks the ring holds */
   volatile uint32_t overruns;
   volatile uint32_t backlog_max; /* highest number of chunks pending at the device */
-  volatile uint32_t m0_lag_max; /* highest (produced - queued) seen at a DMA chunk completion */
+  volatile uint32_t m0_lag_max;
   volatile uint32_t delivered; /* chunks whose USB transfer completed (USB ISR) */
   volatile uint32_t lost; /* chunks never queued because the DMA overwrote them first (main loop) */
   volatile uint32_t queued; /* chunks handed to the USB controller (main loop) */

@@ -52,7 +52,7 @@ usb_endpoint_t usb_endpoint_bulk_in = {
   .setup_complete = 0,
   .transfer_complete = usb_bulk_in_transfer_complete,
 };
-static USB_DEFINE_QUEUE(usb_endpoint_bulk_in, 4);
+static USB_DEFINE_QUEUE(usb_endpoint_bulk_in, AIRSPY_STREAM_USB_POOL);
 
 usb_endpoint_t usb_endpoint_bulk_out = {
   .address = 0x02,

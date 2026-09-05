@@ -289,10 +289,10 @@ __attribute__ ((always_inline)) static inline void dma_chunk_done(void)
     if(backlog > stream->backlog_max)
       stream->backlog_max = backlog;
 
-    if((int32_t)m0_lag > 0 && m0_lag > stream->m0_lag_max)
+    if(queued - consumed < AIRSPY_STREAM_USB_POOL && (int32_t)m0_lag > 0 && m0_lag > stream->m0_lag_max)
       stream->m0_lag_max = m0_lag;
 
-    if((int32_t)(overwritten - consumed) >= 0 && (int32_t)(queued - overwritten) > 0)
+    if((int32_t)(overwritten - consumed) > 0 && (int32_t)(queued - overwritten) > 0)
       stream->overruns++;
   }
 
