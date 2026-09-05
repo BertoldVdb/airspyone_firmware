@@ -50,6 +50,7 @@
 #include "r820t.h"
 
 #include "airspy_conf.h"
+#include "airspy_watchdog.h"
 
 #define ADDR_ALIGN_32BITS (3)
 
@@ -935,6 +936,32 @@ const usb_transfer_stage_t stage)
   return USB_REQUEST_STATUS_OK;
 }
 
+static airspy_watchdog_status_t watchdog_status_buffer __attribute__ ((aligned(4)));
+
+usb_request_status_t usb_vendor_request_watchdog(
+usb_endpoint_t* const endpoint,
+const usb_transfer_stage_t stage)
+{
+  if (stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t length = sizeof(airspy_watchdog_status_t);
+
+    if(endpoint->setup.index == 1)
+    {
+      watchdog_host_contact();
+      watchdog_feed();
+    }
+    watchdog_get_status(&watchdog_status_buffer);
+
+    if(endpoint->setup.length < length)
+      length = endpoint->setup.length;
+
+    usb_transfer_schedule_block(endpoint->in, &watchdog_status_buffer, length);
+    usb_transfer_schedule_ack(endpoint->out);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
 static airspy_stream_status_t stream_status_buffer __attribute__ ((aligned(4)));
 
 usb_request_status_t usb_vendor_request_get_stream_status(
@@ -1170,6 +1197,7 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
   vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
   vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
+  vendor_request_handler[AIRSPY_WATCHDOG] = usb_vendor_request_watchdog;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

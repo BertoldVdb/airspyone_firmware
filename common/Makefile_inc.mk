@@ -69,6 +69,7 @@ endif
 .SECONDEXPANSION:
 .SECONDARY:
 
+.DEFAULT_GOAL := all
 all: images
 
 images: $(BINARY).images

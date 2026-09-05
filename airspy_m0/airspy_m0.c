@@ -53,6 +53,7 @@
 #include "r820t.h"
 #include "airspy_m0.h"
 #include "airspy_stream.h"
+#include "airspy_watchdog.h"
 #include "airspy_m0.hdr"
 
 extern uint32_t cm0_data_share; /* defined in linker script */
@@ -219,6 +220,7 @@ void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint)
   usb_queue_transfer_complete(endpoint);
   stream->delivered += before - usb_queue_active_count(endpoint);
   stream->usb_errors = usb_queue_transfer_errors;
+  watchdog_feed();
   if(stream_run_epoch == stream_epoch && get_receiver_mode() == RECEIVER_MODE_RX)
     stream_queue_chunks();
   signal_sev();
@@ -273,6 +275,8 @@ int main(void)
   iap_cmd_res_t iap_cmd_res;
   usb_descriptor_serial_number_t serial_number;
   airspy_usb_req_init();
+
+  watchdog_init();
 
   /* R820T Startup */
   r820t_startup(&airspy_conf->r820t_conf_rw);

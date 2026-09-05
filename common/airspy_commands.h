@@ -69,6 +69,7 @@ typedef enum
   AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
   AIRSPY_GET_STREAM_STATUS          = 28, /* IN: airspy_stream_status_t */
   AIRSPY_SET_FRAMING                = 29, /* wIndex 1 = on, 0 = off; cleared at every stream stop */
+  AIRSPY_WATCHDOG                   = 30, /* IN: airspy_watchdog_status_t; wIndex 1 also feeds it */
   AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
   AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
   AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
@@ -125,6 +126,20 @@ typedef struct
 /* Chunk size on the wire, framed or not */
 #define AIRSPY_FRAME_WIRE_UNPACKED (16384)
 #define AIRSPY_FRAME_WIRE_PACKED (6144)
+
+/* AIRSPY_WATCHDOG: wIndex 1 feeds the watchdog and reports */
+#define AIRSPY_WATCHDOG_FLAG_ARMED (1 << 0) /* firmware built with the watchdog and it is running */
+#define AIRSPY_WATCHDOG_FLAG_RESET_BY_WATCHDOG (1 << 1) /* the last reset was a watchdog time-out (best effort) */
+#define AIRSPY_WATCHDOG_FLAG_HOST_OWNED (1 << 2) /* the host has made contact; only the host feeds from now on */
+#define AIRSPY_WATCHDOG_SELF_FEEDS (6) /* self feeds before contact, about 5.6 s each */
+
+typedef struct
+{
+  uint32_t flags;           /* AIRSPY_WATCHDOG_FLAG_* */
+  uint32_t timeout_ms;      /* time between feeds the device tolerates */
+  uint32_t remaining_ms; /* time left before a reset when the reply was built */
+  uint32_t self_feeds_left; /* self feeds the device may still do before contact */
+} airspy_watchdog_status_t;
 
 typedef enum
 {

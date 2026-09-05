@@ -53,6 +53,14 @@ LDFLAGS += -mcpu=cortex-m0 -mthumb -DTHUMB \
 
 OBJ += $(SRC:.c=.o)
 
+# make WATCHDOG=1 arms the LPC4370 watchdog at boot
+ifeq ($(WATCHDOG),1)
+CFLAGS += -DAIRSPY_HOST_WATCHDOG=1
+WATCHDOG_STAMP = .watchdog_on
+else
+WATCHDOG_STAMP = .watchdog_off
+endif
+
 # Be silent per default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)
 Q := @
@@ -65,6 +73,7 @@ endif
 .SECONDEXPANSION:
 .SECONDARY:
 
+.DEFAULT_GOAL := all
 all: images
 
 images: $(BINARY).images
@@ -114,6 +123,7 @@ program: $(BINARY).dfu
 
 clean:
 	$(Q)rm -f *.o
+	$(Q)rm -f .watchdog_on .watchdog_off
 	$(Q)rm -f *.d
 	$(Q)rm -f *.elf
 	$(Q)rm -f *.bin
@@ -139,3 +149,8 @@ FORCE:
 	python ../scripts/airspy_fw-version.py ./$@
 
 -include $(OBJ:.o=.d)
+
+$(WATCHDOG_STAMP):
+	$(Q)rm -f .watchdog_on .watchdog_off
+	$(Q)touch $@
+$(OBJ): $(WATCHDOG_STAMP)

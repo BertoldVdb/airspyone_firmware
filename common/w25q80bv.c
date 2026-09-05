@@ -28,6 +28,7 @@
 
 #include <stdint.h>
 #include "w25q80bv.h"
+#include "airspy_watchdog.h"
 #include "airspy_core.h"
 #include <libopencm3/lpc43xx/ssp.h>
 #include <libopencm3/lpc43xx/scu.h>
@@ -175,7 +176,10 @@ void w25q80bv_get_unique_id(w25q80bv_unique_id_t* unique_id)
 
 void w25q80bv_wait_while_busy(void)
 {
-  while (w25q80bv_get_status() & W25Q80BV_STATUS_BUSY);
+  while (w25q80bv_get_status() & W25Q80BV_STATUS_BUSY)
+  {
+    watchdog_feed();
+  }
 }
 
 void w25q80bv_write_enable(void)
