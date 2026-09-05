@@ -37,6 +37,8 @@
 
 #define ROMFLASH_BASE_ADDR (0x80000000UL)
 
+#define IMAGE_IN_RAM() (((uint32_t)&airspy_nos_conf) >= 0x10000000UL)
+
 #define WAIT_CPU_CLOCK_INIT_DELAY (10000)  /* Wait about 150us@200Mhz, 300us@96MHz & 2400us@12Mhz (about 3cycles*20000) */
 #define WAIT_R820T_POWER_ON_DELAY (100000) /* Wait about 1500us@200Mhz, 3000us@96MHz & 24000us@12Mhz (about 3cycles*100000) */
 
@@ -399,9 +401,7 @@ void sys_clock_init(void)
   CGU_BASE_APB3_CLK = CGU_BASE_APB3_CLK_AUTOBLOCK
       | CGU_BASE_APB3_CLK_CLK_SEL(CGU_SRC_XTAL);
 
-  /* ********************** */
   /*  SI5351c configuration */
-  /* ********************** */
   /*
    * xxMHz clock is entering LPC GP_CLKIN (from SI5351C) input now.
    * AirSpy clocks:
@@ -421,7 +421,8 @@ void sys_clock_init(void)
   {
     /* SI5351C detected continue init using AirSpy NOS configuration */
     addr = (uint32_t)&airspy_nos_conf;
-    addr = (addr | ROMFLASH_BASE_ADDR); /* Fix with Addr from ROMFLASH */
+    if(!IMAGE_IN_RAM())
+      addr = (addr | ROMFLASH_BASE_ADDR); /* Fix with Addr from ROMFLASH */
     src = (unsigned char *)addr;
     /* Copy the configuration from Flash to SRAM */
     for (dest = (unsigned char *)airspy_conf; (uint32_t)dest < (((uint32_t)airspy_conf) + AIRSPY_CONF_MAX_DATA_SIZE); )
@@ -432,7 +433,8 @@ void sys_clock_init(void)
   {
     /* SI5351C not detected continue init using AirSpy MINI configuration */
     addr = (uint32_t)&airspy_mini_conf;
-    addr = (addr | ROMFLASH_BASE_ADDR); /* Fix with Addr from ROMFLASH */
+    if(!IMAGE_IN_RAM())
+      addr = (addr | ROMFLASH_BASE_ADDR); /* Fix with Addr from ROMFLASH */
     src = (unsigned char *)addr;
     /* Copy the configuration from Flash to SRAM */
     for (dest = (unsigned char *)airspy_conf; (uint32_t)dest < (((uint32_t)airspy_conf) + AIRSPY_CONF_MAX_DATA_SIZE); )
@@ -461,12 +463,14 @@ void sys_clock_init(void)
   /* Set default r820t_conf_rw.if_freq to airspy_m0_m4_conf[0] => r820t_if_freq  */
   airspy_conf->r820t_conf_rw.if_freq = airspy_conf->airspy_m0_m4_conf[0].airspy_m0_conf.r820t_if_freq;
 
-  /* Load calibration data */
-  addr = (ROMFLASH_BASE_ADDR + AIRSPY_FLASH_CALIB_OFFSET); /* Addr from Flash Configuration 0 (Calibration Data) */
-  airspy_calib_flash = (airspy_calib_t*)(addr);
-  airspy_calib.header = airspy_calib_flash->header;
-  airspy_calib.timestamp = airspy_calib_flash->timestamp;
-  airspy_calib.correction_ppb = airspy_calib_flash->correction_ppb;
+  if(!IMAGE_IN_RAM())
+  {
+    addr = (ROMFLASH_BASE_ADDR + AIRSPY_FLASH_CALIB_OFFSET); /* Addr from Flash Configuration 0 (Calibration Data) */
+    airspy_calib_flash = (airspy_calib_t*)(addr);
+    airspy_calib.header = airspy_calib_flash->header;
+    airspy_calib.timestamp = airspy_calib_flash->timestamp;
+    airspy_calib.correction_ppb = airspy_calib_flash->correction_ppb;
+  }
 
   if((airspy_conf->conf_hw.hardware_type & HW_FEATURE_SI5351C) == HW_FEATURE_SI5351C)
   {
@@ -517,9 +521,7 @@ void sys_clock_init(void)
 
   pt_airspy_sys_conf = &airspy_conf->airspy_m4_init_conf;
 
-  /* ********************************************************************* */
   /*  M4/M0 core, Peripheral, APB1, APB3 Configuration (PLL1 clock source) */
-  /* ********************************************************************* */
   /* Configure PLL1 with CGU_SRC_GP_CLKIN as source clock */
   cpu_clock_pll1_low_speed(&pt_airspy_sys_conf->pll1_ls);
 
@@ -528,9 +530,7 @@ void sys_clock_init(void)
   /* Configure I2C1 (for R820T) to 400kHz when we switch over to APB3 clock = PLL1 */
   i2c1_init(airspy_conf->i2c_conf.i2c1_pll1_ls_conf_val);
 
-  /* ************************************************** */
   /* Connect PLL1 to M4/M0 core, Peripheral, APB1, APB3 */
-  /* ************************************************** */
   /* Use PLL1 as clock source for BASE_M4_CLK (CPU) */
   CGU_BASE_M4_CLK = (CGU_BASE_M4_CLK_CLK_SEL(CGU_SRC_PLL1) | CGU_BASE_M4_CLK_AUTOBLOCK);
 
@@ -546,9 +546,7 @@ void sys_clock_init(void)
   CGU_BASE_APB3_CLK = CGU_BASE_APB3_CLK_AUTOBLOCK
       | CGU_BASE_APB3_CLK_CLK_SEL(CGU_SRC_PLL1);
 
-  /* **************************************************** */
   /* PLL0USB & USB0 Configuration (GP_CLKIN clock source) */
-  /* **************************************************** */
   /* Use CGU_SRC_GP_CLKIN as clock source for PLL0USB */
   CGU_PLL0USB_CTRL = CGU_PLL0USB_CTRL_PD
       | CGU_PLL0USB_CTRL_AUTOBLOCK
@@ -570,9 +568,7 @@ void sys_clock_init(void)
   CGU_BASE_USB0_CLK = CGU_BASE_USB0_CLK_AUTOBLOCK
       | CGU_BASE_USB0_CLK_CLK_SEL(CGU_SRC_PLL0USB);
 
-  /* ****************************************** */
   /* Disable/PowerDown unused clock/peripherals */
-  /* ****************************************** */
   CREG_CREG6 |= (1<<17); // PowerDown RNG
 
   /* Disable XTAL because GP_CLKIN is used from SI5351C instead */
@@ -658,9 +654,7 @@ void sys_clock_init(void)
 
   CCU1_CLK_PERIPH_SGPIO_CFG &= ~(1);
 
-  /* ******************************************** */
   /*  ADCHS Configuration (GP_CLKIN clock source) */
-  /* ******************************************** */
   sys_clock_samplerate(&airspy_conf->airspy_m0_m4_conf[0].airspy_m4_conf);
 }
 

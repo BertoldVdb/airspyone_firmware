@@ -30,6 +30,8 @@
 #include <libopencm3/lpc43xx/rgu.h>
 #include <libopencm3/lpc43xx/ipc.h>
 #include <libopencm3/cm3/scs.h>
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/vector.h>
 
 #include <airspy_core.h>
 #include <si5351c.h>
@@ -450,6 +452,8 @@ void scs_dwt_cycle_counter_enabled(void)
 
 int main(void)
 {
+  SCB_VTOR = (uint32_t)&vector_table;
+
   scs_dwt_cycle_counter_enabled();
   pin_setup();
   sys_clock_init();
