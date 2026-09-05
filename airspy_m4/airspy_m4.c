@@ -159,6 +159,49 @@ __attribute__ ((always_inline)) static void pack(uint32_t* input, uint32_t* outp
         
 }
 
+__attribute__ ((always_inline)) static void pack8(uint32_t* input, uint32_t* output, uint32_t length)
+{
+  register uint32_t *a0 asm("r0") = input;
+  register uint32_t *a1 asm("r1") = output;
+  register uint32_t a2 asm("r2") = length;
+
+  asm volatile("1:\n\t"
+         "ldm.w %0!, {r4, r5, r6, r7, r8, r9, r10, r12}\n\t"
+         "lsr r4, r4, #4\n\t"
+         "lsr r5, r5, #4\n\t"
+         "lsr r6, r6, #4\n\t"
+         "lsr r7, r7, #4\n\t"
+         "lsr r8, r8, #4\n\t"
+         "lsr r9, r9, #4\n\t"
+         "lsr r10, r10, #4\n\t"
+         "lsr r12, r12, #4\n\t"
+         "uxtb16 r4, r4\n\t"
+         "uxtb16 r5, r5\n\t"
+         "uxtb16 r6, r6\n\t"
+         "uxtb16 r7, r7\n\t"
+         "uxtb16 r8, r8\n\t"
+         "uxtb16 r9, r9\n\t"
+         "uxtb16 r10, r10\n\t"
+         "uxtb16 r12, r12\n\t"
+         "orr r4, r4, r4, lsr #8\n\t"
+         "orr r5, r5, r5, lsr #8\n\t"
+         "orr r6, r6, r6, lsr #8\n\t"
+         "orr r7, r7, r7, lsr #8\n\t"
+         "orr r8, r8, r8, lsr #8\n\t"
+         "orr r9, r9, r9, lsr #8\n\t"
+         "orr r10, r10, r10, lsr #8\n\t"
+         "orr r12, r12, r12, lsr #8\n\t"
+         "pkhbt r4, r4, r5, lsl #16\n\t"
+         "pkhbt r5, r6, r7, lsl #16\n\t"
+         "pkhbt r6, r8, r9, lsl #16\n\t"
+         "pkhbt r7, r10, r12, lsl #16\n\t"
+         "stm.w %1!, {r4, r5, r6, r7}\n\t"
+         "subs %2, %2, #16\n\t"
+         "bne 1b\n\t"
+        : "+r"(a0), "+r"(a1), "+r"(a2)
+        :: "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12");
+}
+
 static __inline__ void stream_reset(void)
 {
   dma_chunks_done = 0;
@@ -229,6 +272,13 @@ static void publish_stream_format(void)
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS / 2;
     stream->chunk_samples = (AIRSPY_STREAM_CHUNK_BYTES_UNPACKED - header) / 2;
   }
+  else if(use_packing == 2)
+  {
+    stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_8BIT;
+    stream->chunk_slots = 1;
+    stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS;
+    stream->chunk_samples = AIRSPY_STREAM_CHUNK_BYTES_8BIT - header;
+  }
   else
   {
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_PACKED;
@@ -240,7 +290,7 @@ static void publish_stream_format(void)
 
 void set_packing_state(uint8_t state)
 {
-  use_packing = state ? 1 : 0;
+  use_packing = (state > 2) ? 1 : state; /* 0 = 16-bit, 1 = 12-bit packed, 2 = 8-bit */
   publish_stream_format();
 }
 
@@ -249,6 +299,8 @@ void set_framing_state(uint8_t state)
   use_framing = state ? 1 : 0;
   publish_stream_format();
 }
+
+static uint32_t adchs_sample_rate_hz;
 
 void adchs_start(uint8_t chan_num)
 {
@@ -430,10 +482,13 @@ void m0core_isr(void)
     {
       adchs_conf = adchs_conf & (~AIRSPY_SAMPLERATE_CONF_ALT);
       sys_clock_samplerate(&airspy_conf->airspy_m0_m4_alt_conf[adchs_conf].airspy_m4_conf);
+      adchs_sample_rate_hz = airspy_conf->airspy_m0_m4_alt_conf[adchs_conf].airspy_m0_conf.r820t_if_freq * 4;
     }else
     {
       sys_clock_samplerate(&airspy_conf->airspy_m0_m4_conf[adchs_conf].airspy_m4_conf);
+      adchs_sample_rate_hz = airspy_conf->airspy_m0_m4_conf[adchs_conf].airspy_m0_conf.r820t_if_freq * 4;
     }
+    ADCHS_set_sample_rate(adchs_sample_rate_hz);
     ack_samplerate();
   }
   
@@ -539,6 +594,8 @@ int main(void)
   nvic_enable_irq(NVIC_M0CORE_IRQ);
 
   AIRSPY_DEBUG_MAILBOX->pending = 0; /* RAM is not cleared at boot */
+  adchs_sample_rate_hz = airspy_conf->airspy_m0_m4_conf[0].airspy_m0_conf.r820t_if_freq * 4;
+  ADCHS_set_sample_rate(adchs_sample_rate_hz);
 
   adchs_stop();
   adchs_stopped = 1;
@@ -586,7 +643,10 @@ int main(void)
         uint32_t chunk = packed_chunks;
         uint32_t* slot = (uint32_t*)(airspy_stream_slot(chunk % AIRSPY_STREAM_NUM_SLOTS) + stream->header_bytes);
 
-        pack(slot, slot, stream->chunk_samples);
+        if(use_packing == 2)
+          pack8(slot, slot, stream->chunk_samples);
+        else
+          pack(slot, slot, stream->chunk_samples);
 
         if(epoch != adchs_epoch)
           break;

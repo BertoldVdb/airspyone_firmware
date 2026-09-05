@@ -148,7 +148,8 @@ static void stream_write_header(uint8_t* chunk, uint32_t chunk_index, uint32_t c
   h->magic = AIRSPY_FRAME_MAGIC;
   h->chunk_index = chunk_index;
   h->sample_count = chunk_samples;
-  h->flags = (chunk_bytes == AIRSPY_STREAM_CHUNK_BYTES_PACKED) ? AIRSPY_FRAME_FLAG_PACKED : 0;
+  h->flags = (chunk_bytes == AIRSPY_STREAM_CHUNK_BYTES_PACKED) ? AIRSPY_FRAME_FLAG_PACKED :
+             (chunk_bytes == AIRSPY_STREAM_CHUNK_BYTES_8BIT) ? AIRSPY_FRAME_FLAG_8BIT : 0;
   h->lost_chunks = stream->lost;
   h->overrun_chunks = stream->overruns;
   h->freq_hz = set_freq_params.freq_hz;

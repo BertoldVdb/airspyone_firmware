@@ -31,6 +31,7 @@ extern "C"
 
 void ADCHS_deinit(void);
 void ADCHS_init(void);
+void ADCHS_set_sample_rate(uint32_t hz); /* selects the CRS / DGEC bias (UM10503 table 1129) used by ADCHS_init */
 void ADCHS_DMA_init(uint8_t packed, uint32_t header_bytes);
 void ADCHS_desc_init(uint8_t chan_num);
 void ADCHS_stop(uint8_t conf_num);

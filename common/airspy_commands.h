@@ -121,6 +121,8 @@ typedef struct
 #define AIRSPY_FRAME_HEADER_SIZE (96)
 #define AIRSPY_FRAME_MAGIC (0x59505341) /* "ASPY" */
 #define AIRSPY_FRAME_FLAG_PACKED (1 << 0)
+#define AIRSPY_FRAME_FLAG_PACKED (1 << 0) /* 12-bit packed samples (packing 1) */
+#define AIRSPY_FRAME_FLAG_8BIT   (1 << 1) /* one byte per sample, the top 8 bits (packing 2) */
 
 typedef struct
 {
@@ -138,6 +140,7 @@ typedef struct
 /* Chunk size on the wire, framed or not */
 #define AIRSPY_FRAME_WIRE_UNPACKED (16384)
 #define AIRSPY_FRAME_WIRE_PACKED (6144)
+#define AIRSPY_FRAME_WIRE_8BIT (4096)
 
 /* AIRSPY_WATCHDOG: wIndex 1 feeds the watchdog and reports */
 #define AIRSPY_WATCHDOG_FLAG_ARMED (1 << 0)             /* the watchdog is running */

@@ -75,7 +75,12 @@ void ADCHS_DMA_init(uint8_t packed, uint32_t header_bytes)
     uint32_t offset = 0;
     uint32_t bytes = slot_bytes;
 
-    if(packed)
+    if(packed == 2)
+    {
+      offset = header_bytes;
+      bytes = slot_bytes - 2 * header_bytes;
+    }
+    else if(packed)
     {
       offset = header_bytes;
       bytes = ((((slot_bytes / 4) * 3) - header_bytes) / 3) * 4;
@@ -155,6 +160,18 @@ void ADCHS_deinit(void)
 }
 
 /* Initialized ADCHS for freq between 0 to less than 30MSPS */
+static uint32_t adchs_crs = 0;
+static uint32_t adchs_dgec = 0;
+
+void ADCHS_set_sample_rate(uint32_t hz)
+{
+  if(hz <= 20000000) { adchs_crs = 0; adchs_dgec = 0x0; }
+  else if(hz <= 30000000) { adchs_crs = 1; adchs_dgec = 0x0; }
+  else if(hz <= 50000000) { adchs_crs = 2; adchs_dgec = 0x0; }
+  else if(hz <= 65000000) { adchs_crs = 3; adchs_dgec = 0xF; }
+  else { adchs_crs = 4; adchs_dgec = 0xE; }
+}
+
 void ADCHS_init(void)
 {
   uint32_t i;
@@ -170,13 +187,13 @@ void ADCHS_init(void)
 
   /* Configure and Enable ADCHS for fADC less than 30MS/s */
   LPC_ADCHS->POWER_CONTROL =
-  0 |
+  adchs_crs |
   (0x1 << 4)   |
   (0x1 << 10)  |
   (0 << 16)    |
   (1 << 17)    |
   (1 << 18);
-  LPC_ADCHS->ADC_SPEED = 0x0;
+  LPC_ADCHS->ADC_SPEED = adchs_dgec * 0x111111; /* the same DGEC for all six channels */
 
   LPC_ADCHS->FLUSH = 1;
 
