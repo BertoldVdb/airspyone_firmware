@@ -36,6 +36,18 @@ __ldrex() & __strex() are not compatible with M0 so use lock compatible with bot
 #include "usb.h"
 #include "usb_queue.h"
 
+static inline uint32_t irq_lock(void)
+{
+  uint32_t primask;
+  __asm__ volatile ("mrs %0, primask\n\tcpsid i" : "=r" (primask) : : "memory");
+  return primask;
+}
+
+static inline void irq_unlock(uint32_t primask)
+{
+  __asm__ volatile ("msr primask, %0" : : "r" (primask) : "memory");
+}
+
 usb_queue_t* endpoint_queues[12] = {};
 
 volatile uint32_t usb_queue_transfer_errors = 0;
@@ -81,11 +93,11 @@ static usb_transfer_t* allocate_transfer(
           aborted = __strex((uint32_t) transfer->next, (uint32_t *) &queue->free_transfers);
   } while (aborted);
 */
-  cm_disable_interrupts();
+  uint32_t irq = irq_lock();
   transfer = queue->free_transfers;
   queue->free_transfers = transfer->next;
   transfer->next = NULL;
-  cm_enable_interrupts();
+  irq_unlock(irq);
 
   return transfer;
 }
@@ -101,10 +113,10 @@ static void free_transfer(usb_transfer_t* const transfer)
           aborted = __strex((uint32_t) transfer, (uint32_t *) &queue->free_transfers);
   } while (aborted);
 */
-  cm_disable_interrupts();
+  uint32_t irq = irq_lock();
   transfer->next = queue->free_transfers;
   queue->free_transfers = transfer;
-  cm_enable_interrupts();
+  irq_unlock(irq);
 }
 
 /* Place a transfer in the free list (nolock or disable IRQ) */
@@ -143,14 +155,14 @@ static usb_transfer_t* endpoint_queue_transfer(usb_transfer_t* const transfer)
 
 static void usb_queue_flush_queue(usb_queue_t* const queue)
 {
-  cm_disable_interrupts();
+  uint32_t irq = irq_lock();
   while (queue->active)
   {
     usb_transfer_t* transfer = queue->active;
     queue->active = transfer->next;
     free_transfer_nolock(transfer);
   }
-  cm_enable_interrupts();
+  irq_unlock(irq);
 }
 
 void usb_queue_flush_endpoint(const usb_endpoint_t* const endpoint)
@@ -184,7 +196,7 @@ int usb_transfer_schedule(
   // Fill in transfer fields
   transfer->maximum_length = maximum_length;
 
-  cm_disable_interrupts();
+  uint32_t irq = irq_lock();
   usb_transfer_t* tail = endpoint_queue_transfer(transfer);
   if (tail == NULL)
   {
@@ -194,7 +206,7 @@ int usb_transfer_schedule(
     // The queue is currently running, try to append
     usb_endpoint_schedule_append(queue->endpoint, &tail->td, &transfer->td);
   }
-  cm_enable_interrupts();
+  irq_unlock(irq);
   return 0;
 }
 
