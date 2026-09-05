@@ -212,6 +212,7 @@ void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint)
   uint32_t before = usb_queue_active_count(endpoint);
   usb_queue_transfer_complete(endpoint);
   stream->delivered += before - usb_queue_active_count(endpoint);
+  stream->usb_errors = usb_queue_transfer_errors;
   signal_sev();
 }
 

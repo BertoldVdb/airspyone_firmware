@@ -38,6 +38,8 @@ __ldrex() & __strex() are not compatible with M0 so use lock compatible with bot
 
 usb_queue_t* endpoint_queues[12] = {};
 
+volatile uint32_t usb_queue_transfer_errors = 0;
+
 #define USB_ENDPOINT_INDEX(endpoint_address) (((endpoint_address & 0xF) * 2) + ((endpoint_address >> 7) & 1))
 
 static usb_queue_t* endpoint_queue(const usb_endpoint_t* const endpoint)
@@ -225,18 +227,16 @@ void usb_queue_transfer_complete(usb_endpoint_t* const endpoint)
   {
     uint8_t status = transfer->td.total_bytes;
 
-    // Check for failures
+    // Still not finished
+    if (status & USB_TD_DTD_TOKEN_STATUS_ACTIVE)
+            break;
+
     if (status & USB_TD_DTD_TOKEN_STATUS_HALTED
         || status & USB_TD_DTD_TOKEN_STATUS_BUFFER_ERROR
         || status & USB_TD_DTD_TOKEN_STATUS_TRANSACTION_ERROR)
     {
-      // TODO: Uh oh, do something useful here
-      while (1);
+      usb_queue_transfer_errors++;
     }
-
-    // Still not finished
-    if (status & USB_TD_DTD_TOKEN_STATUS_ACTIVE)
-            break;
 
     // Advance the head.
     queue->active = transfer->next;

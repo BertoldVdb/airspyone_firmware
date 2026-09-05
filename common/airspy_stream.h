@@ -69,9 +69,11 @@ typedef struct
   volatile uint32_t overruns;
   volatile uint32_t backlog_max; /* highest number of chunks pending at the device */
   volatile uint32_t m0_lag_max;
+  volatile uint32_t dma_errors; /* GPDMA error interrupts: the ADC DMA could not write the ring (bus error) */
   volatile uint32_t delivered; /* chunks whose USB transfer completed (USB ISR) */
   volatile uint32_t lost; /* chunks never queued because the DMA overwrote them first (main loop) */
   volatile uint32_t queued; /* chunks handed to the USB controller (main loop) */
+  volatile uint32_t usb_errors; /* bulk IN transfers the USB controller retired with an error (USB ISR) */
 } airspy_stream_state_t;
 
 extern uint32_t cm4_data_share; /* defined in linker script */

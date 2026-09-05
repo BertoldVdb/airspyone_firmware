@@ -922,6 +922,8 @@ const usb_transfer_stage_t stage)
     stream_status_buffer.chunk_bytes = stream->chunk_bytes;
     stream_status_buffer.chunk_samples = stream->chunk_samples;
     stream_status_buffer.m0_lag_max = stream->m0_lag_max;
+    stream_status_buffer.dma_errors = stream->dma_errors;
+    stream_status_buffer.usb_errors = usb_queue_transfer_errors;
 
     if(endpoint->setup.length < length)
       length = endpoint->setup.length;

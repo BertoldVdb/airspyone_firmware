@@ -78,6 +78,9 @@ void usb_queue_init(usb_queue_t* const queue);
 
 void usb_queue_transfer_complete(usb_endpoint_t* const endpoint);
 
+/* Transfers retired with an error */
+extern volatile uint32_t usb_queue_transfer_errors;
+
 /* Number of transfers queued on the endpoint that have not completed yet */
 unsigned int usb_queue_active_count(const usb_endpoint_t* const endpoint);
 
