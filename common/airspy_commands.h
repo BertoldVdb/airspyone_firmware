@@ -67,16 +67,24 @@ typedef enum
   AIRSPY_GET_SAMPLERATES            = 25,
   AIRSPY_SET_PACKING                = 26,
   AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
-  AIRSPY_GET_STREAM_STATUS          = 28, /* IN: airspy_stream_status_t */
-  AIRSPY_SET_FRAMING                = 29, /* wIndex 1 = on, 0 = off; cleared at every stream stop */
-  AIRSPY_WATCHDOG                   = 30, /* IN: airspy_watchdog_status_t; wIndex 1 also feeds it */
-  AIRSPY_SET_CALIBRATION            = 33, /* wValue | wIndex << 16 = crystal correction in ppb (int32) */
-  AIRSPY_GET_CALIBRATION            = 34, /* IN: airspy_calibration_t */
-  AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
-  AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
-  AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
+  AIRSPY_GET_STREAM_STATUS          = 28,
+  AIRSPY_SET_FRAMING                = 29,
+  AIRSPY_WATCHDOG                   = 30,
+  AIRSPY_SET_UART_BAUD              = 31, /* wValue = baud & 0xFFFF, wIndex = baud >> 16 */
+  AIRSPY_UART_WRITE                 = 32,
+  AIRSPY_SET_CALIBRATION = 33, /* wValue|wIndex<<16 = crystal correction in ppb (int32), applied at once */
+  AIRSPY_GET_CALIBRATION = 34,
+  /* Debug access, see airspy_debug: */
+  AIRSPY_MEM_READ = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
+  AIRSPY_MEM_WRITE = 36, /* OUT: same addressing, data = bytes to write */
+  AIRSPY_CALL = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */ /* IN: airspy_calibration_t */ /* OUT data = bytes to transmit (max 64) */
 } airspy_vendor_request;
 
+/* Reply to AIRSPY_GET_STREAM_STATUS: 8 little-endian uint32 */
+/* Crystal correction in effect: the flash block's value */
+#define AIRSPY_CALIBRATION_SOURCE_NONE  (0)
+#define AIRSPY_CALIBRATION_SOURCE_FLASH (1)
+#define AIRSPY_CALIBRATION_SOURCE_HOST  (2)
 typedef struct
 {
   uint32_t core; /* 0 = M0 (runs in the USB request handler), 1 = M4 (runs in its main loop) */
@@ -90,12 +98,6 @@ typedef struct
   uint32_t r0;
 } airspy_call_result_t;
 
-
-/* Reply to AIRSPY_GET_STREAM_STATUS: 8 little-endian uint32 */
-/* Crystal correction in effect: the flash block's value */
-#define AIRSPY_CALIBRATION_SOURCE_NONE  (0)
-#define AIRSPY_CALIBRATION_SOURCE_FLASH (1)
-#define AIRSPY_CALIBRATION_SOURCE_HOST  (2)
 typedef struct
 {
   int32_t correction_ppb;
@@ -116,11 +118,12 @@ typedef struct
   uint32_t dma_errors; /* ADC DMA bus errors: the DMA could not write part of the ring */
   uint32_t usb_errors; /* bulk transfers the USB controller retired with an error */
   uint32_t adc_overflows; /* chunks during which the ADC FIFO overflowed */
+  uint32_t pps_count; /* PPS edges captured since the stream started */
 } airspy_stream_status_t;
 
 #define AIRSPY_FRAME_HEADER_SIZE (96)
 #define AIRSPY_FRAME_MAGIC (0x59505341) /* "ASPY" */
-#define AIRSPY_FRAME_FLAG_PACKED (1 << 0)
+#define AIRSPY_FRAME_UART_BYTES (15) /* UART bytes per chunk header */
 #define AIRSPY_FRAME_FLAG_PACKED (1 << 0) /* 12-bit packed samples (packing 1) */
 #define AIRSPY_FRAME_FLAG_8BIT   (1 << 1) /* one byte per sample, the top 8 bits (packing 2) */
 
@@ -134,7 +137,13 @@ typedef struct
   uint32_t lost_chunks; /* chunks the device lost so far, see airspy_stream_status_t */
   uint32_t overrun_chunks; /* chunks the device delivered corrupted so far */
   uint32_t freq_hz; /* tuner frequency the device was set to when this chunk was queued */
-  uint32_t reserved[15];   /* zero */
+  uint32_t pps_sample_index_lo; /* sample index of the last PPS edge captured since the stream started */
+  uint32_t pps_sample_index_hi;
+  uint32_t pps_fraction; /* position of that edge within the sample, in 1/2^32 sample units */
+  uint32_t pps_count; /* PPS edges captured since the stream started */
+  uint8_t uart_len; /* bytes received on the auxiliary UART (GNSS module) carried in this chunk */
+  uint8_t uart_data[AIRSPY_FRAME_UART_BYTES];
+  uint32_t reserved[7];    /* zero */
 } airspy_frame_header_t;   /* AIRSPY_FRAME_HEADER_SIZE bytes */
 
 /* Chunk size on the wire, framed or not */

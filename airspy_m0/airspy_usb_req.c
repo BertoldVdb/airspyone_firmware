@@ -42,7 +42,6 @@
 #include "usb_descriptor.h"
 #include "airspy_usb_req.h"
 #include "airspy_debug.h"
-#include "signal_mcu.h"
 
 #include "airspy_m0.h"
 #include "airspy_commands.h"
@@ -51,6 +50,8 @@
 
 #include "airspy_conf.h"
 #include "airspy_watchdog.h"
+#include "airspy_uart.h"
+#include "signal_mcu.h"
 
 #define ADDR_ALIGN_32BITS (3)
 
@@ -999,6 +1000,7 @@ const usb_transfer_stage_t stage)
     stream_status_buffer.dma_errors = stream->dma_errors;
     stream_status_buffer.usb_errors = usb_queue_transfer_errors;
     stream_status_buffer.adc_overflows = stream->adc_overflows;
+    stream_status_buffer.pps_count = stream->pps_count;
 
     if(endpoint->setup.length < length)
       length = endpoint->setup.length;
@@ -1035,6 +1037,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 }
 
 /* ID 1 to X corresponds to user endpoint->setup.request */
+static uint8_t uart_write_buffer[64] __attribute__ ((aligned(4)));
 static airspy_calibration_t calibration_buffer;
 
 usb_request_status_t usb_vendor_request_set_calibration(
@@ -1047,7 +1050,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
     stream->calib_ppb = ppb;
     stream->calib_source = AIRSPY_CALIBRATION_SOURCE_HOST;
     if(get_receiver_mode() == RECEIVER_MODE_RX)
-      r820t_set_freq(&airspy_conf->r820t_conf_rw, set_freq_params.freq_hz);
+      return defer(endpoint, DEFERRED_SET_FREQ, 0, 0);
     usb_transfer_schedule_ack(endpoint->in);
   }
   return USB_REQUEST_STATUS_OK;
@@ -1069,6 +1072,37 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   return USB_REQUEST_STATUS_OK;
 }
 
+usb_request_status_t usb_vendor_request_set_uart_baud(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t baud = ((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value;
+    airspy_uart_init(baud);
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
+usb_request_status_t usb_vendor_request_uart_write(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  uint32_t len = endpoint->setup.length;
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    if(len == 0 || len > sizeof(uart_write_buffer))
+      return USB_REQUEST_STATUS_STALL;
+    usb_transfer_schedule_block(endpoint->out, uart_write_buffer, len);
+    return USB_REQUEST_STATUS_OK;
+  }
+  else if(stage == USB_TRANSFER_STAGE_DATA)
+  {
+    if(airspy_uart_write(uart_write_buffer, len) != len)
+      return USB_REQUEST_STATUS_STALL;
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
 
 static uint8_t mem_buffer[64] __attribute__ ((aligned(4)));
 static airspy_call_request_t call_request;
@@ -1240,13 +1274,16 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_SET_PACKING] = usb_vendor_request_set_packing_command;
 
   vendor_request_handler[AIRSPY_SPIFLASH_ERASE_SECTOR] = usb_vendor_request_erase_sector_spiflash;
+  vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
+  vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
+  vendor_request_handler[AIRSPY_WATCHDOG] = usb_vendor_request_watchdog;
+  vendor_request_handler[AIRSPY_SET_UART_BAUD] = usb_vendor_request_set_uart_baud;
+  vendor_request_handler[AIRSPY_UART_WRITE] = usb_vendor_request_uart_write;
+  vendor_request_handler[AIRSPY_SET_CALIBRATION] = usb_vendor_request_set_calibration;
+  vendor_request_handler[AIRSPY_GET_CALIBRATION] = usb_vendor_request_get_calibration;
   vendor_request_handler[AIRSPY_MEM_READ] = usb_vendor_request_mem_read;
   vendor_request_handler[AIRSPY_MEM_WRITE] = usb_vendor_request_mem_write;
   vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
-  vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
-  vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
-  vendor_request_handler[AIRSPY_SET_CALIBRATION] = usb_vendor_request_set_calibration;
-  vendor_request_handler[AIRSPY_GET_CALIBRATION] = usb_vendor_request_get_calibration;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

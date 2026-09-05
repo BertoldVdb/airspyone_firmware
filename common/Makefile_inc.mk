@@ -26,8 +26,6 @@
 
 # derived primarily from Makefiles in libopencm3
 
-.DEFAULT_GOAL := all
-
 AIRSPY_OPTS = -DLPC43XX -DLPC43XX_M4 -DCORE_M4
 
 LDSCRIPT ?= ../common/LPC4370_M4.ld
@@ -61,11 +59,7 @@ OBJ += $(SRC:.c=.o)
 ifeq ($(NOFLASH),1)
 CFLAGS += -DAIRSPY_NO_FLASH=1
 endif
-# make PPS_TEST=1: 1 Hz test square wave on P2_7
-ifeq ($(PPS_TEST),1)
-CFLAGS += -DPPS_TEST_OUTPUT
-endif
-OPTS_STAMP = .opts_f$(NOFLASH)_p$(PPS_TEST)
+OPTS_STAMP = .opts_f$(NOFLASH)
 
 # Be silent per default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)

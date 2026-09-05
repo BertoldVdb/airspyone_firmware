@@ -26,6 +26,7 @@ BINARY = airspy_m0
 SRC = $(BINARY).c\
 	airspy_rx.c \
 	airspy_usb_req.c \
+	airspy_uart.c \
 	usb_descriptor.c \
 	usb_device.c \
 	usb_endpoint.c

@@ -54,6 +54,7 @@
 #include "airspy_m0.h"
 #include "airspy_stream.h"
 #include "airspy_watchdog.h"
+#include "airspy_uart.h"
 #include "airspy_m0.hdr"
 
 extern uint32_t cm0_data_share; /* defined in linker script */
@@ -153,6 +154,20 @@ static void stream_write_header(uint8_t* chunk, uint32_t chunk_index, uint32_t c
   h->lost_chunks = stream->lost;
   h->overrun_chunks = stream->overruns;
   h->freq_hz = set_freq_params.freq_hz;
+  {
+    uint32_t s1, s2;
+    uint32_t tries = 16;
+    do
+    {
+      s1 = stream->pps_seq;
+      h->pps_sample_index_lo = stream->pps_index_lo;
+      h->pps_sample_index_hi = stream->pps_index_hi;
+      h->pps_fraction = stream->pps_fraction;
+      h->pps_count = stream->pps_count;
+      s2 = stream->pps_seq;
+    } while(((s1 != s2) || (s1 & 1)) && --tries);
+  }
+  h->uart_len = (uint8_t)airspy_uart_read(h->uart_data, AIRSPY_FRAME_UART_BYTES);
   for(i = 0; i < sizeof(h->reserved) / sizeof(h->reserved[0]); i++)
     h->reserved[i] = 0;
 }
@@ -173,6 +188,7 @@ void usb_configuration_changed(usb_device_t* const device)
 
 void ADCHS_start(uint8_t conf_num)
 {
+  airspy_uart_flush_rx();
   stream->delivered = 0;
   stream->lost = 0;
   stream->queued = 0;
@@ -278,6 +294,7 @@ int main(void)
   airspy_usb_req_init();
 
   watchdog_init();
+  airspy_uart_init(AIRSPY_UART_DEFAULT_BAUD);
 
   /* R820T Startup */
   r820t_startup(&airspy_conf->r820t_conf_rw);
@@ -319,9 +336,8 @@ int main(void)
   while(true)
   {
     signal_wfe();
-    deferred_job_run();
     watchdog_heartbeat();
-
+    deferred_job_run();
     if(epoch != stream_epoch)
     {
       cm_disable_interrupts();

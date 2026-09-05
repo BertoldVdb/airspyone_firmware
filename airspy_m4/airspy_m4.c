@@ -41,6 +41,7 @@
 
 #include "adchs.h"
 #include "airspy_debug.h"
+#include "pps.h"
 
 #include "m0_bin.h"
 #include "m0s_bin.h"
@@ -302,6 +303,13 @@ void set_framing_state(uint8_t state)
 
 static uint32_t adchs_sample_rate_hz;
 
+static uint32_t pps_timer_clock_hz(void)
+{
+  const airspy_pll1_hs_t* pll1 = &airspy_conf->airspy_m4_init_conf.pll1_hs;
+  uint32_t gp_clkin_hz = (airspy_conf->conf_hw.hardware_type & HW_FEATURE_SI5351C) ? 20000000 : 24000000;
+  return (gp_clkin_hz / (pll1->pll1_hs_nsel + 1)) * (pll1->pll1_hs_msel + 1);
+}
+
 void adchs_start(uint8_t chan_num)
 {
   int i;
@@ -333,6 +341,7 @@ void adchs_start(uint8_t chan_num)
   ADCHS_DMA_init(use_packing, stream->header_bytes);
 
   led_on();
+  pps_stream_start(adchs_sample_rate_hz, pps_timer_clock_hz());
   LPC_ADCHS->TRIGGER = 1;
   __asm("dsb");
   
@@ -346,6 +355,7 @@ void adchs_stop(void)
   __asm__("cpsid i");
 
   ADCHS_deinit();
+  pps_stream_stop();
 
 //  cpu_clock_pll1_low_speed(&airspy_conf->airspy_m4_init_conf.pll1_ls);
 
@@ -593,9 +603,10 @@ int main(void)
   nvic_enable_irq(NVIC_DMA_IRQ);
   nvic_enable_irq(NVIC_M0CORE_IRQ);
 
-  AIRSPY_DEBUG_MAILBOX->pending = 0; /* RAM is not cleared at boot */
   adchs_sample_rate_hz = airspy_conf->airspy_m0_m4_conf[0].airspy_m0_conf.r820t_if_freq * 4;
   ADCHS_set_sample_rate(adchs_sample_rate_hz);
+  pps_init();
+  AIRSPY_DEBUG_MAILBOX->pending = 0; /* RAM is not cleared at boot */
 
   adchs_stop();
   adchs_stopped = 1;
@@ -633,7 +644,7 @@ int main(void)
       AIRSPY_DEBUG_MAILBOX->result = fn(AIRSPY_DEBUG_MAILBOX->args[0], AIRSPY_DEBUG_MAILBOX->args[1], AIRSPY_DEBUG_MAILBOX->args[2], AIRSPY_DEBUG_MAILBOX->args[3]);
       AIRSPY_DEBUG_MAILBOX->pending = 0;
     }
-  
+
     if(use_packing)
     {
       /* Thanks to Pierre HB9FUF for the initial packing proof-of-concept */

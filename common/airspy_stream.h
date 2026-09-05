@@ -72,6 +72,12 @@ typedef struct
   volatile uint32_t m0_lag_max;
   volatile uint32_t dma_errors; /* GPDMA error interrupts: the ADC DMA could not write the ring (bus error) */
   volatile uint32_t adc_overflows; /* chunks in which the ADC FIFO overflow flag was set */
+  /* PPS capture (M4 timer ISR) */
+  volatile uint32_t pps_seq;
+  volatile uint32_t pps_count;     /* edges captured since the stream started */
+  volatile uint32_t pps_index_lo;  /* sample index of the last edge */
+  volatile uint32_t pps_index_hi;
+  volatile uint32_t pps_fraction; /* position within that sample, 1/2^32 sample units */
   volatile uint32_t calib_xtal_nominal;
   volatile int32_t  calib_ppb;
   volatile uint32_t calib_source;

@@ -216,6 +216,17 @@ int usb_transfer_schedule_ack(const usb_endpoint_t* const endpoint)
   return usb_transfer_schedule_block(endpoint, 0, 0);
 }
 
+int usb_control_reply(usb_endpoint_t* const endpoint, void* const data, uint32_t length)
+{
+  const uint32_t wlength = endpoint->setup.length;
+  if(length > wlength)
+    length = wlength;
+  usb_transfer_schedule_block(endpoint->in, data, length);
+  if(length != 0 && length < wlength && (length & 63) == 0)
+    usb_transfer_schedule_ack(endpoint->in);
+  return usb_transfer_schedule_ack(endpoint->out);
+}
+
 /* Called when an endpoint might have completed a transfer */
 void usb_queue_transfer_complete(usb_endpoint_t* const endpoint)
 {
@@ -259,15 +270,4 @@ unsigned int usb_queue_active_count(const usb_endpoint_t* const endpoint)
     count++;
   }
   return count;
-}
-
-int usb_control_reply(usb_endpoint_t* const endpoint, void* const data, uint32_t length)
-{
-  const uint32_t wlength = endpoint->setup.length;
-  if(length > wlength)
-    length = wlength;
-  usb_transfer_schedule_block(endpoint->in, data, length);
-  if(length != 0 && length < wlength && (length & 63) == 0)
-    usb_transfer_schedule_ack(endpoint->in);
-  return usb_transfer_schedule_ack(endpoint->out);
 }
