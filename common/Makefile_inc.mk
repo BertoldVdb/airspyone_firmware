@@ -57,6 +57,16 @@ LDFLAGS += -mcpu=cortex-m4 -mthumb -DTHUMB -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
 		-Wl,--gc-sections -Xlinker -Map=$(BINARY).map
 OBJ += $(SRC:.c=.o)
 
+# make NOFLASH=1: board without the SPI flash
+ifeq ($(NOFLASH),1)
+CFLAGS += -DAIRSPY_NO_FLASH=1
+endif
+# make PPS_TEST=1: 1 Hz test square wave on P2_7
+ifeq ($(PPS_TEST),1)
+CFLAGS += -DPPS_TEST_OUTPUT
+endif
+OPTS_STAMP = .opts_f$(NOFLASH)_p$(PPS_TEST)
+
 # Be silent per default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)
 Q := @
@@ -118,6 +128,7 @@ program: $(BINARY).dfu
 
 clean:
 	$(Q)rm -f *.o
+	$(Q)rm -f .opts_*
 	$(Q)rm -f *.d
 	$(Q)rm -f *.elf
 	$(Q)rm -f *.bin
@@ -135,3 +146,8 @@ clean:
 .PHONY: images clean
 
 -include $(OBJ:.o=.d)
+
+$(OPTS_STAMP):
+	$(Q)rm -f .opts_*
+	$(Q)touch $@
+$(OBJ): $(OPTS_STAMP)

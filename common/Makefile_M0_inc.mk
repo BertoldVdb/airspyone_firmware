@@ -55,10 +55,12 @@ OBJ += $(SRC:.c=.o)
 
 ifeq ($(WATCHDOG),1)
 CFLAGS += -DAIRSPY_HOST_WATCHDOG=1
-WATCHDOG_STAMP = .watchdog_on
-else
-WATCHDOG_STAMP = .watchdog_off
 endif
+# make NOFLASH=1 builds for a board without the SPI flash
+ifeq ($(NOFLASH),1)
+CFLAGS += -DAIRSPY_NO_FLASH=1
+endif
+OPTS_STAMP = .opts_w$(WATCHDOG)_f$(NOFLASH)
 
 # Be silent per default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)
@@ -122,7 +124,7 @@ program: $(BINARY).dfu
 
 clean:
 	$(Q)rm -f *.o
-	$(Q)rm -f .watchdog_on .watchdog_off
+	$(Q)rm -f .opts_* .watchdog_on .watchdog_off
 	$(Q)rm -f *.d
 	$(Q)rm -f *.elf
 	$(Q)rm -f *.bin
@@ -149,7 +151,7 @@ FORCE:
 
 -include $(OBJ:.o=.d)
 
-$(WATCHDOG_STAMP):
-	$(Q)rm -f .watchdog_on .watchdog_off
+$(OPTS_STAMP):
+	$(Q)rm -f .opts_*
 	$(Q)touch $@
-$(OBJ): $(WATCHDOG_STAMP)
+$(OBJ): $(OPTS_STAMP)

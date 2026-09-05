@@ -271,6 +271,10 @@ const usb_transfer_stage_t stage)
 usb_request_status_t usb_vendor_request_erase_spiflash(
 usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 {
+#ifdef AIRSPY_NO_FLASH
+  (void)endpoint; (void)stage;
+  return USB_REQUEST_STATUS_STALL; /* flashless build */
+#else
   if (stage == USB_TRANSFER_STAGE_SETUP)
   {
     w25q80bv_setup();
@@ -278,11 +282,16 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
     usb_transfer_schedule_ack(endpoint->in);
   }
   return USB_REQUEST_STATUS_OK;
+#endif
 }
 
 usb_request_status_t usb_vendor_request_write_spiflash(
 usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 {
+#ifdef AIRSPY_NO_FLASH
+  (void)endpoint; (void)stage;
+  return USB_REQUEST_STATUS_STALL; /* flashless build */
+#else
   uint32_t addr = 0;
   uint16_t len = 0;
 
@@ -317,11 +326,16 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   } else {
     return USB_REQUEST_STATUS_OK;
   }
+#endif
 }
 
 usb_request_status_t usb_vendor_request_read_spiflash(
 usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 {
+#ifdef AIRSPY_NO_FLASH
+  (void)endpoint; (void)stage;
+  return USB_REQUEST_STATUS_STALL; /* flashless build */
+#else
   uint32_t i;
   uint32_t addr;
   uint16_t len;
@@ -384,6 +398,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   {
     return USB_REQUEST_STATUS_OK;
   }
+#endif
 }
 
 usb_request_status_t usb_vendor_request_read_board_id(
@@ -1020,6 +1035,39 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 }
 
 /* ID 1 to X corresponds to user endpoint->setup.request */
+static airspy_calibration_t calibration_buffer;
+
+usb_request_status_t usb_vendor_request_set_calibration(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    int32_t ppb = (int32_t)(((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value);
+    airspy_conf->r820t_conf_rw.xtal_freq = sys_calib_r820t(stream->calib_xtal_nominal, ppb);
+    stream->calib_ppb = ppb;
+    stream->calib_source = AIRSPY_CALIBRATION_SOURCE_HOST;
+    if(get_receiver_mode() == RECEIVER_MODE_RX)
+      r820t_set_freq(&airspy_conf->r820t_conf_rw, set_freq_params.freq_hz);
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
+usb_request_status_t usb_vendor_request_get_calibration(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t length = sizeof(airspy_calibration_t);
+    if(length > endpoint->setup.length)
+      length = endpoint->setup.length;
+    calibration_buffer.correction_ppb = stream->calib_ppb;
+    calibration_buffer.source = stream->calib_source;
+    usb_transfer_schedule_block(endpoint->in, &calibration_buffer, length);
+    usb_transfer_schedule_ack(endpoint->out);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
 
 
 static uint8_t mem_buffer[64] __attribute__ ((aligned(4)));
@@ -1197,7 +1245,8 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
   vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
   vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
-  vendor_request_handler[AIRSPY_WATCHDOG] = usb_vendor_request_watchdog;
+  vendor_request_handler[AIRSPY_SET_CALIBRATION] = usb_vendor_request_set_calibration;
+  vendor_request_handler[AIRSPY_GET_CALIBRATION] = usb_vendor_request_get_calibration;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

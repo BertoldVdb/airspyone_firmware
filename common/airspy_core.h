@@ -198,6 +198,7 @@ void delay(uint32_t duration);
 
 void cpu_reset(void);
 
+uint32_t sys_calib_r820t(uint32_t xtal_freq, int32_t correction_ppb);
 void sys_clock_init();
 
 void sys_clock_samplerate(const airspy_sys_samplerate_t* const pt_airspy_sys_conf);

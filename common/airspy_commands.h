@@ -70,6 +70,8 @@ typedef enum
   AIRSPY_GET_STREAM_STATUS          = 28, /* IN: airspy_stream_status_t */
   AIRSPY_SET_FRAMING                = 29, /* wIndex 1 = on, 0 = off; cleared at every stream stop */
   AIRSPY_WATCHDOG                   = 30, /* IN: airspy_watchdog_status_t; wIndex 1 also feeds it */
+  AIRSPY_SET_CALIBRATION            = 33, /* wValue | wIndex << 16 = crystal correction in ppb (int32) */
+  AIRSPY_GET_CALIBRATION            = 34, /* IN: airspy_calibration_t */
   AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
   AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
   AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
@@ -90,6 +92,16 @@ typedef struct
 
 
 /* Reply to AIRSPY_GET_STREAM_STATUS: 8 little-endian uint32 */
+/* Crystal correction in effect: the flash block's value */
+#define AIRSPY_CALIBRATION_SOURCE_NONE  (0)
+#define AIRSPY_CALIBRATION_SOURCE_FLASH (1)
+#define AIRSPY_CALIBRATION_SOURCE_HOST  (2)
+typedef struct
+{
+  int32_t correction_ppb;
+  uint32_t source; /* AIRSPY_CALIBRATION_SOURCE_* */
+} airspy_calibration_t;
+
 typedef struct
 {
   uint32_t captured;      /* chunks captured by the ADC DMA */

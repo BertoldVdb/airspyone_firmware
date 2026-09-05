@@ -25,6 +25,8 @@
 #include "airspy_core.h"
 #include "airspy_conf.h"
 #include "airspy_calib.h"
+#include "airspy_stream.h"
+#include "airspy_commands.h"
 #include "w25q80bv.h"
 #include "si5351c.h"
 #include <libopencm3/lpc43xx/i2c.h>
@@ -529,6 +531,9 @@ void sys_clock_init(void)
   /* Use PLL1 as clock source for BASE_M4_CLK (CPU) */
   CGU_BASE_M4_CLK = (CGU_BASE_M4_CLK_CLK_SEL(CGU_SRC_PLL1) | CGU_BASE_M4_CLK_AUTOBLOCK);
 
+  AIRSPY_STREAM_STATE->calib_xtal_nominal = airspy_conf->r820t_conf_rw.xtal_freq;
+  AIRSPY_STREAM_STATE->calib_ppb = 0;
+  AIRSPY_STREAM_STATE->calib_source = AIRSPY_CALIBRATION_SOURCE_NONE;
   if(IMAGE_IN_RAM())
   {
     w25q80bv_setup();
@@ -537,6 +542,8 @@ void sys_clock_init(void)
   if(apply_calib && (airspy_calib.header == AIRSPY_FLASH_CALIB_HEADER))
   {
     airspy_conf->r820t_conf_rw.xtal_freq = sys_calib_r820t(airspy_conf->r820t_conf_rw.xtal_freq, airspy_calib.correction_ppb);
+    AIRSPY_STREAM_STATE->calib_ppb = airspy_calib.correction_ppb;
+    AIRSPY_STREAM_STATE->calib_source = AIRSPY_CALIBRATION_SOURCE_FLASH;
   }
 
   /* Switch peripheral clock over to use PLL1 */
