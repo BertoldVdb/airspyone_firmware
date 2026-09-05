@@ -872,6 +872,34 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   }
 }
 
+static airspy_stream_status_t stream_status_buffer __attribute__ ((aligned(4)));
+
+usb_request_status_t usb_vendor_request_get_stream_status(
+usb_endpoint_t* const endpoint,
+const usb_transfer_stage_t stage)
+{
+  if (stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t length = sizeof(airspy_stream_status_t);
+
+    stream_status_buffer.captured = stream->captured;
+    stream_status_buffer.delivered = stream->delivered;
+    stream_status_buffer.lost = stream->lost;
+    stream_status_buffer.overruns = stream->overruns;
+    stream_status_buffer.backlog_max = stream->backlog_max;
+    stream_status_buffer.ring_chunks = stream->ring_chunks;
+    stream_status_buffer.chunk_bytes = stream->chunk_bytes;
+    stream_status_buffer.chunk_samples = stream->chunk_stride / 2; /* raw 16-bit samples per chunk */
+
+    if(endpoint->setup.length < length)
+      length = endpoint->setup.length;
+
+    usb_transfer_schedule_block(endpoint->in, &stream_status_buffer, length);
+    usb_transfer_schedule_ack(endpoint->out);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
 usb_request_status_t usb_vendor_request_erase_sector_spiflash(
 usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 {
@@ -1071,6 +1099,7 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_MEM_READ] = usb_vendor_request_mem_read;
   vendor_request_handler[AIRSPY_MEM_WRITE] = usb_vendor_request_mem_write;
   vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
+  vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

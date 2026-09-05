@@ -46,30 +46,16 @@
 #include "m0s_bin.h"
 
 #include "airspy_conf.h"
+#include <airspy_stream.h>
 
 #define DEFAULT_ADCHS_CHAN (0)
 
 #undef DMA_ISR_DEBUG
 //#define DMA_ISR_DEBUG
 
-#define USB_DATA_TRANSFER_SIZE_BYTE (ADCHS_DATA_TRANSFER_SIZE_BYTE)
-#define USB_BULK_BUFFER_MASK ((32768) - 1)
-#define get_usb_buffer_offset() (usb_bulk_buffer_offset[0])
-#define set_usb_buffer_offset(val) (usb_bulk_buffer_offset[0] = val)
-/* Manage round robin after increment with USB_BULK_BUFFER_MASK */
-#define inc_mask_usb_buffer_offset(buff_offset, inc_value) ((buff_offset+inc_value) & USB_BULK_BUFFER_MASK)
-
-volatile uint32_t usb_bulk_buffer_offset_uint32_m4;
-volatile uint32_t *usb_bulk_buffer_offset_m4;
-volatile uint32_t last_offset_m4;
-#define get_usb_buffer_offset_m4() (usb_bulk_buffer_offset_m4[0])
-#define set_usb_buffer_offset_m4(val) (usb_bulk_buffer_offset_m4[0] = val)
-#define inc_mask_usb_buffer_offset_m4(buff_offset, inc_value) inc_mask_usb_buffer_offset(buff_offset, inc_value)
-
 #define SLAVE_TXEV_FLAG ((uint32_t *) 0x40043400)
 #define SLAVE_TXEV_QUIT() { *SLAVE_TXEV_FLAG = 0x0; }
 
-extern uint32_t cm4_data_share; /* defined in linker script */
 extern uint32_t adchs_data; /* defined in linker script */
 extern uint32_t cm0_data_share; /* defined in linker script */
 
@@ -78,9 +64,11 @@ volatile int adchs_started = 0;
 
 volatile int use_packing = 0;
 
-volatile uint32_t *usb_bulk_buffer_offset = &cm4_data_share;
-volatile uint32_t *usb_bulk_buffer_length = ((&cm4_data_share)+1);
-volatile uint32_t *last_offset_m0 = ((&cm4_data_share)+2);
+volatile airspy_stream_state_t * const stream = AIRSPY_STREAM_STATE;
+
+volatile uint32_t dma_chunks_done = 0;
+static uint32_t packed_chunks = 0;
+static volatile uint32_t adchs_epoch = 0;
 
 uint8_t* const usb_bulk_buffer = (uint8_t*)USB_BULK_BUFFER_START;
 
@@ -169,20 +157,14 @@ __attribute__ ((always_inline)) static void pack(uint32_t* input, uint32_t* outp
         
 }
 
-static __inline__ void clr_usb_buffer_offset(void)
-{  
-  if(use_packing)
-  {
-    usb_bulk_buffer_offset[0] = ADCHS_DATA_TRANSFER_SIZE_BYTE / 2;
-    usb_bulk_buffer_offset_m4[0] = ADCHS_DATA_TRANSFER_SIZE_BYTE;
-  }
-  else
-  {
-    usb_bulk_buffer_offset[0] = ADCHS_DATA_TRANSFER_SIZE_BYTE;
-  }
-  
-  last_offset_m4 = 0;
-  *last_offset_m0 = 0;
+static __inline__ void stream_reset(void)
+{
+  dma_chunks_done = 0;
+  packed_chunks = 0;
+  stream->captured = 0;
+  stream->overruns = 0;
+  stream->backlog_max = 0;
+  adchs_epoch++;
 }
 
 static __inline__ uint32_t get_start_stop_adchs(void)
@@ -224,12 +206,16 @@ void set_packing_state(uint8_t state)
   if(state == 0)
   {
     use_packing = 0;
-    *usb_bulk_buffer_length = 0x4000;
+    stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
+    stream->chunk_stride = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
+    stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS / 2;
   }
   else
   {
     use_packing = 1;
-    *usb_bulk_buffer_length = 0x1800;
+    stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_PACKED;
+    stream->chunk_stride = AIRSPY_STREAM_SLOT_SIZE;
+    stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS;
   }
 }
 
@@ -253,7 +239,7 @@ void adchs_start(uint8_t chan_num)
   {
     dst[i] = 0;
   }
-  clr_usb_buffer_offset();
+  stream_reset();
 
   ADCHS_init();
   ADCHS_desc_init(chan_num);
@@ -280,6 +266,29 @@ void adchs_stop(void)
 
   /* Enable IRQ globally */
   __asm__("cpsie i");
+}
+
+__attribute__ ((always_inline)) static inline void dma_chunk_done(void)
+{
+  uint32_t produced = dma_chunks_done + 1;
+  uint32_t backlog = produced - stream->delivered;
+
+  dma_chunks_done = produced;
+
+  if((int32_t)backlog < 0)
+    backlog = 0;
+
+  if(backlog > stream->backlog_max)
+    stream->backlog_max = backlog;
+
+  if(backlog >= stream->ring_chunks)
+    stream->overruns++;
+
+  if(use_packing == 0)
+  {
+    stream->captured = produced;
+    signal_sev();
+  }
 }
 
 void dma_isr(void) 
@@ -332,15 +341,7 @@ void dma_isr(void)
   {
     LPC_GPDMA->INTTCCLEAR |= INTTC0; /* Clear Chan0 */
 
-    if(use_packing)
-    {
-        set_usb_buffer_offset_m4( inc_mask_usb_buffer_offset_m4(get_usb_buffer_offset_m4(), 8192));    
-    }
-    else
-    {
-        set_usb_buffer_offset( inc_mask_usb_buffer_offset(get_usb_buffer_offset(), USB_DATA_TRANSFER_SIZE_BYTE) );
-        signal_sev();
-    }
+    dma_chunk_done();
   }
 
 #ifdef DMA_ISR_DEBUG
@@ -462,7 +463,7 @@ int main(void)
   nvic_set_priority(NVIC_DMA_IRQ, 255);
   nvic_set_priority(NVIC_M0CORE_IRQ, 1);
 
-  clr_usb_buffer_offset();
+  stream_reset();
 
   nvic_enable_irq(NVIC_DMA_IRQ);
   nvic_enable_irq(NVIC_M0CORE_IRQ);
@@ -473,8 +474,7 @@ int main(void)
   adchs_stopped = 1;
   adchs_started = 0;
   
-  use_packing = 0;
-  *usb_bulk_buffer_length = 0x4000;
+  set_packing_state(0);
 
   ack_start_stop_adchs();
   ack_samplerate();
@@ -494,8 +494,6 @@ int main(void)
   CCU1_CLK_PERIPH_CORE_CFG &= ~(1);
 #endif
 
-  usb_bulk_buffer_offset_m4 = &usb_bulk_buffer_offset_uint32_m4;
-  
   while(true)
   {
     signal_wfe();
@@ -510,14 +508,21 @@ int main(void)
   
     if(use_packing)
     {
-      /* Thanks to Pierre HB9FUF for the initial packing proof-of-concept */    
-      uint32_t offset = get_usb_buffer_offset_m4();
-      if(offset != last_offset_m4)
+      /* Thanks to Pierre HB9FUF for the initial packing proof-of-concept */
+      while((int32_t)(dma_chunks_done - packed_chunks) > 0)
       {
-        pack((uint32_t*)&usb_bulk_buffer[offset], (uint32_t*)&usb_bulk_buffer[offset], 0x1000);
-        set_usb_buffer_offset( inc_mask_usb_buffer_offset(get_usb_buffer_offset(), 0x2000));    
+        uint32_t epoch = adchs_epoch;
+        uint32_t chunk = packed_chunks;
+        uint32_t offset = (chunk % AIRSPY_STREAM_NUM_SLOTS) * AIRSPY_STREAM_SLOT_SIZE;
+
+        pack((uint32_t*)&usb_bulk_buffer[offset], (uint32_t*)&usb_bulk_buffer[offset], AIRSPY_STREAM_SLOT_SIZE / 2);
+
+        if(epoch != adchs_epoch)
+          break;
+
+        packed_chunks = chunk + 1;
+        stream->captured = chunk + 1;
         signal_sev();
-        last_offset_m4 = offset;
       }
     }
   }

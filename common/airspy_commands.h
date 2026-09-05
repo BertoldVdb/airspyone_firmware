@@ -67,11 +67,10 @@ typedef enum
   AIRSPY_GET_SAMPLERATES            = 25,
   AIRSPY_SET_PACKING                = 26,
   AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
-    /* 28 to 34 are assigned by later features */
-    /* Debug access, see airspy_debug: */
-    AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
-    AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
-    AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
+  AIRSPY_GET_STREAM_STATUS          = 28, /* IN: airspy_stream_status_t */
+  AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
+  AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
+  AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
 } airspy_vendor_request;
 
 typedef struct
@@ -86,6 +85,20 @@ typedef struct
   uint32_t status; /* 0 = done (r0 valid), 1 = still running on the M4, 2 = bad request */
   uint32_t r0;
 } airspy_call_result_t;
+
+
+/* Reply to AIRSPY_GET_STREAM_STATUS: 8 little-endian uint32 */
+typedef struct
+{
+  uint32_t captured;      /* chunks captured by the ADC DMA */
+  uint32_t delivered; /* chunks whose USB transfer to the host completed */
+  uint32_t lost; /* chunks overwritten before they could be sent: the sample stream has gaps */
+  uint32_t overruns; /* times the DMA started overwriting a chunk not yet delivered */
+  uint32_t backlog_max; /* worst (captured - delivered) seen, must stay below ring_chunks */
+  uint32_t ring_chunks;   /* chunks the device ring buffer holds */
+  uint32_t chunk_bytes;   /* bytes per chunk on USB */
+  uint32_t chunk_samples; /* real ADC samples per chunk */
+} airspy_stream_status_t;
 
 typedef enum
 {

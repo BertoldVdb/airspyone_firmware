@@ -49,28 +49,25 @@
 #include "airspy_commands.h"
 #include "airspy_rx.h"
 #include "r820t.h"
+#include "airspy_m0.h"
+#include "airspy_stream.h"
 #include "airspy_m0.hdr"
 
-extern uint32_t cm4_data_share; /* defined in linker script */
 extern uint32_t cm0_data_share; /* defined in linker script */
 
 volatile unsigned int phase = 0;
 
-volatile uint32_t *usb_bulk_buffer_offset = (&cm4_data_share);
-volatile uint32_t *usb_bulk_buffer_length = ((&cm4_data_share)+1);
-volatile uint32_t *last_offset_m0 = ((&cm4_data_share)+2);
+volatile airspy_stream_state_t * const stream = AIRSPY_STREAM_STATE;
+static volatile uint32_t stream_epoch = 0;
 
 volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
 volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
 
-#define get_usb_buffer_offset() (usb_bulk_buffer_offset[0])
-#define get_usb_buffer_length() (usb_bulk_buffer_length[0])
-
 #define MASTER_TXEV_FLAG  ((uint32_t *) 0x40043130)
 #define MASTER_TXEV_QUIT()  { *MASTER_TXEV_FLAG = 0x0; }
 
-uint8_t* const usb_bulk_buffer = (uint8_t*)0x20004000;
+uint8_t* const usb_bulk_buffer = (uint8_t*)AIRSPY_STREAM_RING_ADDR;
 
 const char version_string[] = " " AIRSPY_FW_GIT_TAG " " AIRSPY_FW_CHECKIN_DATE;
 
@@ -147,6 +144,8 @@ void usb_configuration_changed(usb_device_t* const device)
 
 void ADCHS_start(uint8_t conf_num)
 {
+  stream->delivered = 0;
+
   start_stop_adchs_m4(conf_num, START_ADCHS_CMD);
 
   //enable_r820t_power();
@@ -166,6 +165,7 @@ void ADCHS_start(uint8_t conf_num)
     r820t_set_if_bandwidth(&airspy_conf->r820t_conf_rw, airspy_conf->airspy_m0_m4_conf[conf_num].airspy_m0_conf.r820t_if_bw);
   }
   phase = 1;
+  stream_epoch++;
 }
 
 void ADCHS_stop(uint8_t conf_num)
@@ -176,11 +176,48 @@ void ADCHS_stop(uint8_t conf_num)
   /* Re-Init I2C0 & I2C1 after PLL1 frequency is modified */
   i2c0_init(airspy_conf->i2c_conf.i2c0_pll1_ls_hs_conf_val); /* Si5351C I2C peripheral */
   i2c1_init(airspy_conf->i2c_conf.i2c1_pll1_ls_conf_val); /* R820T I2C peripheral */
+  stream_epoch++;
 }
 
-/***************************/
+void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint)
+{
+  uint32_t before = usb_queue_active_count(endpoint);
+  usb_queue_transfer_complete(endpoint);
+  stream->delivered += before - usb_queue_active_count(endpoint);
+  signal_sev();
+}
+
+static void stream_queue_chunks(uint32_t *queued_p)
+{
+  uint32_t queued = *queued_p;
+  uint32_t captured = stream->captured;
+  uint32_t ring_chunks = stream->ring_chunks;
+  uint32_t chunk_stride = stream->chunk_stride;
+  uint32_t chunk_bytes = stream->chunk_bytes;
+  int32_t pending = (int32_t)(captured - queued);
+
+  if(pending < 0 || ring_chunks == 0)
+    return;
+
+  if((uint32_t)pending > ring_chunks - 1)
+  {
+    uint32_t skip = (uint32_t)pending - (ring_chunks - 1);
+    stream->lost += skip;
+    queued += skip;
+  }
+
+  while((int32_t)(captured - queued) > 0)
+  {
+    uint32_t offset = (queued % ring_chunks) * chunk_stride;
+    if(usb_transfer_schedule(&usb_endpoint_bulk_in, &usb_bulk_buffer[offset], chunk_bytes) != 0)
+      break;
+    queued++;
+  }
+
+  *queued_p = queued;
+}
+
 /* adchs_isr managed by M4 */
-/***************************/
 void m4core_isr(void)
 {
   MASTER_TXEV_QUIT();
@@ -229,17 +266,26 @@ int main(void)
 
   usb_run(&usb_device);
 
+  uint32_t epoch = stream_epoch;
+  uint32_t queued = 0;
+
   while(true)
   {
     signal_wfe();
 
-    uint32_t offset = get_usb_buffer_offset();
-    uint32_t length = get_usb_buffer_length();
-
-    if(offset != *last_offset_m0)
+    if(epoch != stream_epoch)
     {
-      usb_transfer_schedule_block(&usb_endpoint_bulk_in, &usb_bulk_buffer[offset], length);
-      *last_offset_m0 = offset;
+      epoch = stream_epoch;
+      queued = 0;
+      stream->lost = 0;
+      if(get_receiver_mode() == RECEIVER_MODE_RX)
+        usb_endpoint_flush(&usb_endpoint_bulk_in);
+      continue;
     }
+
+    if(get_receiver_mode() != RECEIVER_MODE_RX)
+      continue;
+
+    stream_queue_chunks(&queued);
   }
 }

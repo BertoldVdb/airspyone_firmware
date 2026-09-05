@@ -100,17 +100,12 @@ void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed)
                                (0x0UL << 31);
   }
 
-  if(packed)
+  for(i=0; i<ADCHS_DMA_NUM_LLI; i++)
   {
-    for(i=0; i<ADCHS_DMA_NUM_LLI; i++)
+    if(packed || (i & 1))
     {
       adchs_dma_lli[i].control |= (0x1UL << 31);
     }
-  }
-  else
-  {
-    adchs_dma_lli[(ADCHS_DMA_NUM_LLI/2)-1].control |= (0x1UL << 31);
-    adchs_dma_lli[i-1].control |= (0x1UL << 31);
   }
 
   LPC_GPDMA->C0SRCADDR = adchs_dma_lli[0].src_addr;

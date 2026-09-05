@@ -78,4 +78,7 @@ void usb_queue_init(usb_queue_t* const queue);
 
 void usb_queue_transfer_complete(usb_endpoint_t* const endpoint);
 
+/* Number of transfers queued on the endpoint that have not completed yet */
+unsigned int usb_queue_active_count(const usb_endpoint_t* const endpoint);
+
 #endif//__USB_QUEUE_H__

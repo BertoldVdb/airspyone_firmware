@@ -247,3 +247,16 @@ void usb_queue_transfer_complete(usb_endpoint_t* const endpoint)
     transfer = next;
   }
 }
+
+unsigned int usb_queue_active_count(const usb_endpoint_t* const endpoint)
+{
+  usb_queue_t* const queue = endpoint_queue(endpoint);
+  unsigned int count = 0;
+  usb_transfer_t* transfer;
+
+  for (transfer = queue->active; transfer != NULL; transfer = transfer->next)
+  {
+    count++;
+  }
+  return count;
+}

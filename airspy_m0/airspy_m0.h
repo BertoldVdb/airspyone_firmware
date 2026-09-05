@@ -23,11 +23,19 @@
 #define __AIRSPY_M0_H__
 
 #include "airspy_commands.h"
+#include "airspy_stream.h"
+#include "usb_type.h"
 
 void ADCHS_start(uint8_t conf_num);
 void ADCHS_stop(uint8_t conf_num);
 
 void set_samplerate_m4(uint8_t conf_num);
 void set_packing_m4(uint8_t state);
+
+/* Ring buffer state shared with the M4 */
+extern volatile airspy_stream_state_t * const stream;
+
+/* Bulk IN completion callback, USB ISR context */
+void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint);
 
 #endif//__AIRSPY_M0_H__
