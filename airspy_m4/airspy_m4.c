@@ -63,6 +63,7 @@ volatile int adchs_stopped = 0;
 volatile int adchs_started = 0;
 
 volatile int use_packing = 0;
+volatile int use_framing = 0;
 
 volatile airspy_stream_state_t * const stream = AIRSPY_STREAM_STATE;
 
@@ -75,6 +76,7 @@ uint8_t* const usb_bulk_buffer = (uint8_t*)USB_BULK_BUFFER_START;
 volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
 volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
+volatile airspy_mcore_t *set_framing = (airspy_mcore_t *)((&cm0_data_share)+3);
 
 volatile int first_start = 0;
 
@@ -202,22 +204,48 @@ static __inline__ void ack_packing(void)
   set_packing->raw = 0;
 }
 
-void set_packing_state(uint8_t state)
+static __inline__ uint8_t get_framing(uint8_t *framing_state)
 {
-  if(state == 0)
+  *framing_state = set_framing->conf;
+  return(set_framing->cmd);
+}
+
+static __inline__ void ack_framing(void)
+{
+  set_framing->raw = 0;
+}
+
+static void publish_stream_format(void)
+{
+  uint32_t header = use_framing ? AIRSPY_FRAME_HEADER_SIZE : 0;
+
+  stream->header_bytes = header;
+  if(use_packing == 0)
   {
-    use_packing = 0;
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
     stream->chunk_stride = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS / 2;
+    stream->chunk_samples = (AIRSPY_STREAM_CHUNK_BYTES_UNPACKED - header) / 2;
   }
   else
   {
-    use_packing = 1;
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_PACKED;
     stream->chunk_stride = AIRSPY_STREAM_SLOT_SIZE;
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS;
+    stream->chunk_samples = ((AIRSPY_STREAM_CHUNK_BYTES_PACKED - header) / 3) * 2;
   }
+}
+
+void set_packing_state(uint8_t state)
+{
+  use_packing = state ? 1 : 0;
+  publish_stream_format();
+}
+
+void set_framing_state(uint8_t state)
+{
+  use_framing = state ? 1 : 0;
+  publish_stream_format();
 }
 
 void adchs_start(uint8_t chan_num)
@@ -244,7 +272,7 @@ void adchs_start(uint8_t chan_num)
 
   ADCHS_init();
   ADCHS_desc_init(chan_num);
-  ADCHS_DMA_init((uint32_t)ADCHS_DATA_BUFFER, use_packing);
+  ADCHS_DMA_init((uint32_t)ADCHS_DATA_BUFFER, use_packing, stream->header_bytes);
 
   led_on();
   LPC_ADCHS->TRIGGER = 1;
@@ -371,6 +399,8 @@ void m0core_isr(void)
   uint8_t samplerate_cmd;
   uint8_t packing_cmd;
   uint8_t packing_state;
+  uint8_t framing_cmd;
+  uint8_t framing_state;
 
   SLAVE_TXEV_QUIT();
 
@@ -393,6 +423,13 @@ void m0core_isr(void)
   {
     set_packing_state(packing_state);
     ack_packing();
+  }
+
+  framing_cmd = get_framing(&framing_state);
+  if(framing_cmd == SET_FRAMING_CMD)
+  {
+    set_framing_state(framing_state);
+    ack_framing();
   }
 
   adchs_start_stop_cmd = get_start_stop_adchs();
@@ -491,6 +528,7 @@ int main(void)
   ack_start_stop_adchs();
   ack_samplerate();
   ack_packing();
+  ack_framing();
 
   /* Start M0 */
   m0_startup();
@@ -525,9 +563,9 @@ int main(void)
       {
         uint32_t epoch = adchs_epoch;
         uint32_t chunk = packed_chunks;
-        uint32_t offset = (chunk % AIRSPY_STREAM_NUM_SLOTS) * AIRSPY_STREAM_SLOT_SIZE;
+        uint32_t offset = (chunk % AIRSPY_STREAM_NUM_SLOTS) * AIRSPY_STREAM_SLOT_SIZE + stream->header_bytes;
 
-        pack((uint32_t*)&usb_bulk_buffer[offset], (uint32_t*)&usb_bulk_buffer[offset], AIRSPY_STREAM_SLOT_SIZE / 2);
+        pack((uint32_t*)&usb_bulk_buffer[offset], (uint32_t*)&usb_bulk_buffer[offset], stream->chunk_samples);
 
         if(epoch != adchs_epoch)
           break;

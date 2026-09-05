@@ -63,10 +63,6 @@ uint8_t spiflash_buffer[W25Q80BV_PAGE_LEN] __attribute__ ((aligned(4)));
  * version_string.
 */
 
-typedef struct {
-  uint32_t freq_hz;
-} set_freq_params_t;
-
 set_freq_params_t set_freq_params;
 uint8_t sample_rate_conf_no;
 
@@ -428,14 +424,15 @@ const usb_transfer_stage_t stage)
     rx_mode = get_receiver_mode();
     if(rx_mode == RECEIVER_MODE_RX)
     {
-      ADCHS_stop(sample_rate_conf_no);
-    }
-
-    set_packing_m4(state);
-
-    if(rx_mode == RECEIVER_MODE_RX)
-    {
+      uint8_t framed = (stream->header_bytes != 0);
+      ADCHS_stop(sample_rate_conf_no); /* clears framing */
+      set_packing_m4(state);
+      set_framing_m4(framed);
       ADCHS_start(sample_rate_conf_no);
+    }
+    else
+    {
+      set_packing_m4(state);
     }
 
     endpoint->buffer[0] = 1;
@@ -872,6 +869,40 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   }
 }
 
+usb_request_status_t usb_vendor_request_set_framing_command(
+usb_endpoint_t* const endpoint,
+const usb_transfer_stage_t stage)
+{
+  receiver_mode_t rx_mode;
+  uint8_t state;
+
+  if( stage == USB_TRANSFER_STAGE_SETUP )
+  {
+    if(endpoint->setup.index > 1)
+    {
+      return USB_REQUEST_STATUS_STALL;
+    }
+    state = endpoint->setup.index;
+
+    rx_mode = get_receiver_mode();
+    if(rx_mode == RECEIVER_MODE_RX)
+    {
+      ADCHS_stop(sample_rate_conf_no);
+    }
+    set_framing_m4(state);
+    if(rx_mode == RECEIVER_MODE_RX)
+    {
+      ADCHS_start(sample_rate_conf_no);
+    }
+
+    endpoint->buffer[0] = 1;
+    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
+    usb_transfer_schedule_ack(endpoint->out);
+    return USB_REQUEST_STATUS_OK;
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
 static airspy_stream_status_t stream_status_buffer __attribute__ ((aligned(4)));
 
 usb_request_status_t usb_vendor_request_get_stream_status(
@@ -889,7 +920,7 @@ const usb_transfer_stage_t stage)
     stream_status_buffer.backlog_max = stream->backlog_max;
     stream_status_buffer.ring_chunks = stream->ring_chunks;
     stream_status_buffer.chunk_bytes = stream->chunk_bytes;
-    stream_status_buffer.chunk_samples = stream->chunk_stride / 2; /* raw 16-bit samples per chunk */
+    stream_status_buffer.chunk_samples = stream->chunk_samples;
     stream_status_buffer.m0_lag_max = stream->m0_lag_max;
 
     if(endpoint->setup.length < length)
@@ -1101,6 +1132,7 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_MEM_WRITE] = usb_vendor_request_mem_write;
   vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
   vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
+  vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)

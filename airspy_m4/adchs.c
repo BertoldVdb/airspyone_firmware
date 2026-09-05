@@ -68,23 +68,36 @@ void ADCHS_DMA_init_stop(void)
   LPC_GPDMA->CONFIG = 0x00; /* Disable DMA channels, little endian */
 }
 
-void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed)
+void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed, uint32_t header_bytes)
 {
+  const uint32_t slot_bytes = ADCHS_DATA_BUFFER_SIZE_BYTE / ADCHS_DMA_NUM_LLI;
   uint32_t nb_dma_transfer;
   int i;
 
   ADCHS_DMA_init_stop();
 
-  /* Configure DMA LLI in Round Rubin */
-  // The size of the transfer is in multiples of 32bit copies (hence the /4)
-  // and must be even multiples of ADC_FIFO_LEVEL.
-  nb_dma_transfer = ADCHS_DATA_BUFFER_SIZE_BYTE / (ADC_FIFO_LEVEL * ADCHS_DMA_NUM_LLI);
-  nb_dma_transfer = (nb_dma_transfer * ADC_FIFO_LEVEL) / 4;
-
   for(i=0; i<ADCHS_DMA_NUM_LLI; i++)
   {
+    uint32_t offset = 0;
+    uint32_t bytes = slot_bytes;
+
+    if(packed)
+    {
+      offset = header_bytes;
+      bytes = ((((slot_bytes / 4) * 3) - header_bytes) / 3) * 4;
+    }
+    else if((i & 1) == 0)
+    {
+      offset = header_bytes;
+      bytes = slot_bytes - header_bytes;
+    }
+
+    // The size of the transfer is in multiples of 32bit copies (hence the /4)
+    // and must be even multiples of ADC_FIFO_LEVEL.
+    nb_dma_transfer = bytes / 4;
+
     adchs_dma_lli[i].src_addr = ADCHS_DMA_READ_SRC;
-    adchs_dma_lli[i].dst_addr = ((uint32_t)dest_addr) + (nb_dma_transfer*4*i);
+    adchs_dma_lli[i].dst_addr = ((uint32_t)dest_addr) + (slot_bytes * i) + offset;
     /* Modulo with round rubin last LLI point to First in infinite loop */
     adchs_dma_lli[i].next_lli = (uint32_t)(&adchs_dma_lli[(i+1)%ADCHS_DMA_NUM_LLI]);
 
@@ -98,10 +111,7 @@ void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed)
                                (0x0 << 26)  |
                                (0x1 << 27)  |
                                (0x0UL << 31);
-  }
 
-  for(i=0; i<ADCHS_DMA_NUM_LLI; i++)
-  {
     if(packed || (i & 1))
     {
       adchs_dma_lli[i].control |= (0x1UL << 31);

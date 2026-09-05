@@ -23,6 +23,7 @@
 #define __AIRSPY_STREAM_H
 
 #include <stdint.h>
+#include "airspy_commands.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -52,6 +53,8 @@ typedef struct
   volatile uint32_t chunk_bytes;  /* bytes per chunk as sent over USB */
   volatile uint32_t chunk_stride; /* bytes between consecutive chunk starts in the ring */
   volatile uint32_t ring_chunks;  /* number of chunks the ring holds */
+  volatile uint32_t header_bytes; /* AIRSPY_FRAME_HEADER_SIZE when framing is on, else 0 */
+  volatile uint32_t chunk_samples;/* real ADC samples per chunk */
   volatile uint32_t overruns;
   volatile uint32_t backlog_max; /* highest number of chunks pending at the device */
   volatile uint32_t m0_lag_max;

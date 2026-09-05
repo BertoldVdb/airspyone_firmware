@@ -176,6 +176,7 @@ typedef struct
 /* Multi Core order (conf/command...) */
 #define SET_SAMPLERATE_CMD  (1)
 #define SET_PACKING_CMD (1)
+#define SET_FRAMING_CMD (1)
 #define START_ADCHS_CMD  (1)
 #define STOP_ADCHS_CMD   (2)
 

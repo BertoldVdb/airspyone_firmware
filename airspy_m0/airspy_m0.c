@@ -63,6 +63,7 @@ static volatile uint32_t stream_epoch = 0;
 volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
 volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
+volatile airspy_mcore_t *set_framing = (airspy_mcore_t *)((&cm0_data_share)+3);
 
 #define MASTER_TXEV_FLAG  ((uint32_t *) 0x40043130)
 #define MASTER_TXEV_QUIT()  { *MASTER_TXEV_FLAG = 0x0; }
@@ -70,12 +71,6 @@ volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
 uint8_t* const usb_bulk_buffer = (uint8_t*)AIRSPY_STREAM_RING_ADDR;
 
 const char version_string[] = " " AIRSPY_FW_GIT_TAG " " AIRSPY_FW_CHECKIN_DATE;
-
-typedef struct {
-  uint32_t freq_hz;
-} set_freq_params_t;
-
-set_freq_params_t set_freq_params;
 
 typedef struct {
   uint32_t freq_hz;
@@ -128,6 +123,37 @@ void set_packing_m4(uint8_t state)
   }
 }
 
+void set_framing_m4(uint8_t state)
+{
+  set_framing->conf = state;
+  set_framing->cmd = SET_FRAMING_CMD;
+
+  signal_sev();
+
+  while(1)
+  {
+    if(set_framing->raw == 0)
+      break;
+  }
+}
+
+static void stream_write_header(uint8_t* chunk, uint32_t chunk_index, uint32_t chunk_samples, uint32_t chunk_bytes)
+{
+  airspy_frame_header_t* h = (airspy_frame_header_t*)chunk;
+  uint32_t i;
+
+  h->sample_index = (uint64_t)chunk_index * chunk_samples;
+  h->magic = AIRSPY_FRAME_MAGIC;
+  h->chunk_index = chunk_index;
+  h->sample_count = chunk_samples;
+  h->flags = (chunk_bytes == AIRSPY_STREAM_CHUNK_BYTES_PACKED) ? AIRSPY_FRAME_FLAG_PACKED : 0;
+  h->lost_chunks = stream->lost;
+  h->overrun_chunks = stream->overruns;
+  h->freq_hz = set_freq_params.freq_hz;
+  for(i = 0; i < sizeof(h->reserved) / sizeof(h->reserved[0]); i++)
+    h->reserved[i] = 0;
+}
+
 void usb_configuration_changed(usb_device_t* const device)
 {
   if( device->configuration->number )
@@ -174,6 +200,7 @@ void ADCHS_stop(uint8_t conf_num)
 {
   r820t_standby();
   start_stop_adchs_m4(conf_num, STOP_ADCHS_CMD);
+  set_framing_m4(0);
 
   /* Re-Init I2C0 & I2C1 after PLL1 frequency is modified */
   i2c0_init(airspy_conf->i2c_conf.i2c0_pll1_ls_hs_conf_val); /* Si5351C I2C peripheral */
@@ -196,6 +223,8 @@ static void stream_queue_chunks(uint32_t *queued_p)
   uint32_t ring_chunks = stream->ring_chunks;
   uint32_t chunk_stride = stream->chunk_stride;
   uint32_t chunk_bytes = stream->chunk_bytes;
+  uint32_t header_bytes = stream->header_bytes;
+  uint32_t chunk_samples = stream->chunk_samples;
   int32_t pending = (int32_t)(captured - queued);
 
   if(pending < 0 || ring_chunks == 0)
@@ -211,6 +240,8 @@ static void stream_queue_chunks(uint32_t *queued_p)
   while((int32_t)(captured - queued) > 0)
   {
     uint32_t offset = (queued % ring_chunks) * chunk_stride;
+    if(header_bytes)
+      stream_write_header(&usb_bulk_buffer[offset], queued, chunk_samples, chunk_bytes);
     if(usb_transfer_schedule(&usb_endpoint_bulk_in, &usb_bulk_buffer[offset], chunk_bytes) != 0)
       break;
     queued++;

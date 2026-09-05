@@ -31,6 +31,7 @@ void ADCHS_stop(uint8_t conf_num);
 
 void set_samplerate_m4(uint8_t conf_num);
 void set_packing_m4(uint8_t state);
+void set_framing_m4(uint8_t state);
 
 /* Ring buffer state shared with the M4 */
 extern volatile airspy_stream_state_t * const stream;

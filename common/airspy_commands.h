@@ -68,6 +68,7 @@ typedef enum
   AIRSPY_SET_PACKING                = 26,
   AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
   AIRSPY_GET_STREAM_STATUS          = 28, /* IN: airspy_stream_status_t */
+  AIRSPY_SET_FRAMING                = 29, /* wIndex 1 = on, 0 = off; cleared at every stream stop */
   AIRSPY_MEM_READ                   = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
   AIRSPY_MEM_WRITE                  = 36, /* OUT: same addressing, data = bytes to write */
   AIRSPY_CALL                       = AIRSPY_CMD_MAX /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
@@ -100,6 +101,27 @@ typedef struct
   uint32_t chunk_samples; /* real ADC samples per chunk */
   uint32_t m0_lag_max; /* worst lag of the device's own USB queuing behind the ADC, in chunks */
 } airspy_stream_status_t;
+
+#define AIRSPY_FRAME_HEADER_SIZE (96)
+#define AIRSPY_FRAME_MAGIC (0x59505341) /* "ASPY" */
+#define AIRSPY_FRAME_FLAG_PACKED (1 << 0)
+
+typedef struct
+{
+  uint64_t sample_index; /* index of this chunk's first sample in the ADC sample stream */
+  uint32_t magic;          /* AIRSPY_FRAME_MAGIC */
+  uint32_t chunk_index;    /* chunk number since stream start */
+  uint32_t sample_count;   /* real samples in this chunk */
+  uint32_t flags;          /* AIRSPY_FRAME_FLAG_* */
+  uint32_t lost_chunks; /* chunks the device lost so far, see airspy_stream_status_t */
+  uint32_t overrun_chunks; /* chunks the device delivered corrupted so far */
+  uint32_t freq_hz; /* tuner frequency the device was set to when this chunk was queued */
+  uint32_t reserved[15];   /* zero */
+} airspy_frame_header_t;   /* AIRSPY_FRAME_HEADER_SIZE bytes */
+
+/* Chunk size on the wire, framed or not */
+#define AIRSPY_FRAME_WIRE_UNPACKED (16384)
+#define AIRSPY_FRAME_WIRE_PACKED (6144)
 
 typedef enum
 {

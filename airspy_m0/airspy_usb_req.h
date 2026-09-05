@@ -32,6 +32,13 @@ extern usb_device_t usb_device;
 
 extern uint8_t sample_rate_conf_no;
 
+typedef struct {
+  uint32_t freq_hz;
+} set_freq_params_t;
+
+/* Last frequency the host asked for */
+extern set_freq_params_t set_freq_params;
+
 void airspy_usb_req_init(void);
 
 void usb_streaming_disable(void);
