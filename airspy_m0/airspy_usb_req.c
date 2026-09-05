@@ -96,6 +96,67 @@ void usb_streaming_disable(void)
   usb_endpoint_disable(&usb_endpoint_bulk_out);
 }
 
+deferred_job_t deferred_job;
+
+static usb_request_status_t defer(usb_endpoint_t* const endpoint, deferred_kind_t kind, uint32_t index, uint32_t value)
+{
+  if(deferred_job.pending)
+    return USB_REQUEST_STATUS_STALL;
+  deferred_job.kind = kind;
+  deferred_job.endpoint = endpoint;
+  deferred_job.index = index;
+  deferred_job.value = value;
+  __asm__ volatile("dmb" ::: "memory");
+  deferred_job.pending = 1;
+  return USB_REQUEST_STATUS_OK;
+}
+
+void deferred_job_run(void)
+{
+  usb_endpoint_t* endpoint;
+  int8_t value;
+
+  if(!deferred_job.pending)
+    return;
+  endpoint = deferred_job.endpoint;
+  switch(deferred_job.kind)
+  {
+  case DEFERRED_R820T_READ:
+    endpoint->buffer[0] = airspy_r820t_read_single(&airspy_conf->r820t_conf_rw, deferred_job.index);
+    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
+    usb_transfer_schedule_ack(endpoint->out);
+    break;
+  case DEFERRED_R820T_WRITE:
+    airspy_r820t_write_single(&airspy_conf->r820t_conf_rw, deferred_job.index, deferred_job.value);
+    usb_transfer_schedule_ack(endpoint->in);
+    break;
+  case DEFERRED_SET_FREQ:
+    r820t_set_freq(&airspy_conf->r820t_conf_rw, set_freq_params.freq_hz);
+    usb_transfer_schedule_ack(endpoint->in);
+    break;
+  case DEFERRED_LNA_GAIN:
+  case DEFERRED_MIXER_GAIN:
+  case DEFERRED_VGA_GAIN:
+  case DEFERRED_LNA_AGC:
+  case DEFERRED_MIXER_AGC:
+    switch(deferred_job.kind)
+    {
+    case DEFERRED_LNA_GAIN:   value = r820t_set_lna_gain(&airspy_conf->r820t_conf_rw, deferred_job.index); break;
+    case DEFERRED_MIXER_GAIN: value = r820t_set_mixer_gain(&airspy_conf->r820t_conf_rw, deferred_job.index); break;
+    case DEFERRED_VGA_GAIN:   value = r820t_set_vga_gain(&airspy_conf->r820t_conf_rw, deferred_job.index); break;
+    case DEFERRED_LNA_AGC:    value = r820t_set_lna_agc(&airspy_conf->r820t_conf_rw, deferred_job.index); break;
+    default:                  value = r820t_set_mixer_agc(&airspy_conf->r820t_conf_rw, deferred_job.index); break;
+    }
+    endpoint->buffer[0] = value;
+    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
+    usb_transfer_schedule_ack(endpoint->out);
+    break;
+  default:
+    break;
+  }
+  deferred_job.pending = 0;
+}
+
 usb_request_status_t usb_vendor_request_set_receiver_mode(
 usb_endpoint_t* const endpoint,
 const usb_transfer_stage_t stage
@@ -181,9 +242,7 @@ const usb_transfer_stage_t stage)
     {
       if( endpoint->setup.value < 256 )
       {
-        airspy_r820t_write_single(&airspy_conf->r820t_conf_rw, endpoint->setup.index, endpoint->setup.value);
-        usb_transfer_schedule_ack(endpoint->in);
-        return USB_REQUEST_STATUS_OK;
+        return defer(endpoint, DEFERRED_R820T_WRITE, endpoint->setup.index, endpoint->setup.value);
       }
     }
     return USB_REQUEST_STATUS_STALL;
@@ -200,11 +259,7 @@ const usb_transfer_stage_t stage)
   {
     if( endpoint->setup.index < 256 )
     {
-      const uint8_t value = airspy_r820t_read_single(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-      endpoint->buffer[0] = value;
-      usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-      usb_transfer_schedule_ack(endpoint->out);
-      return USB_REQUEST_STATUS_OK;
+      return defer(endpoint, DEFERRED_R820T_READ, endpoint->setup.index, 0);
     }
     return USB_REQUEST_STATUS_STALL;
   } else {
@@ -534,9 +589,7 @@ const usb_transfer_stage_t stage)
     return USB_REQUEST_STATUS_OK;
   } else if (stage == USB_TRANSFER_STAGE_DATA) 
   {
-    r820t_set_freq(&airspy_conf->r820t_conf_rw, set_freq_params.freq_hz);
-    usb_transfer_schedule_ack(endpoint->in);
-    return USB_REQUEST_STATUS_OK;
+    return defer(endpoint, DEFERRED_SET_FREQ, 0, 0);
   } else
   {
     return USB_REQUEST_STATUS_OK;
@@ -550,12 +603,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    value = r820t_set_lna_gain(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-    endpoint->buffer[0] = value;
-
-    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-    usb_transfer_schedule_ack(endpoint->out);
-    return USB_REQUEST_STATUS_OK;
+    (void)value;
+    return defer(endpoint, DEFERRED_LNA_GAIN, endpoint->setup.index, 0);
   }
   return USB_REQUEST_STATUS_OK;
 }
@@ -567,12 +616,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    value = r820t_set_mixer_gain(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-    endpoint->buffer[0] = value;
-
-    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-    usb_transfer_schedule_ack(endpoint->out);
-    return USB_REQUEST_STATUS_OK;
+    (void)value;
+    return defer(endpoint, DEFERRED_MIXER_GAIN, endpoint->setup.index, 0);
   }
   return USB_REQUEST_STATUS_OK;
 }
@@ -584,12 +629,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    value = r820t_set_vga_gain(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-    endpoint->buffer[0] = value;
-
-    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-    usb_transfer_schedule_ack(endpoint->out);
-    return USB_REQUEST_STATUS_OK;
+    (void)value;
+    return defer(endpoint, DEFERRED_VGA_GAIN, endpoint->setup.index, 0);
   }
   return USB_REQUEST_STATUS_OK;
 }
@@ -601,12 +642,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    value = r820t_set_lna_agc(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-    endpoint->buffer[0] = value;
-
-    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-    usb_transfer_schedule_ack(endpoint->out);
-    return USB_REQUEST_STATUS_OK;
+    (void)value;
+    return defer(endpoint, DEFERRED_LNA_AGC, endpoint->setup.index, 0);
   }
   return USB_REQUEST_STATUS_OK;
 }
@@ -618,12 +655,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    value = r820t_set_mixer_agc(&airspy_conf->r820t_conf_rw, endpoint->setup.index);
-    endpoint->buffer[0] = value;
-
-    usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1);
-    usb_transfer_schedule_ack(endpoint->out);
-    return USB_REQUEST_STATUS_OK;
+    (void)value;
+    return defer(endpoint, DEFERRED_MIXER_AGC, endpoint->setup.index, 0);
   }
   return USB_REQUEST_STATUS_OK;
 }
@@ -960,6 +993,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 }
 
 /* ID 1 to X corresponds to user endpoint->setup.request */
+
+
 static uint8_t mem_buffer[64] __attribute__ ((aligned(4)));
 static airspy_call_request_t call_request;
 static airspy_call_result_t call_result;

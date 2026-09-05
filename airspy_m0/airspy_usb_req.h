@@ -39,6 +39,31 @@ typedef struct {
 /* Last frequency the host asked for */
 extern set_freq_params_t set_freq_params;
 
+typedef enum
+{
+  DEFERRED_NONE = 0,
+  DEFERRED_R820T_READ,
+  DEFERRED_R820T_WRITE,
+  DEFERRED_SET_FREQ,
+  DEFERRED_LNA_GAIN,
+  DEFERRED_MIXER_GAIN,
+  DEFERRED_VGA_GAIN,
+  DEFERRED_LNA_AGC,
+  DEFERRED_MIXER_AGC
+} deferred_kind_t;
+
+typedef struct
+{
+  volatile uint32_t pending;
+  deferred_kind_t kind;
+  usb_endpoint_t* endpoint;
+  uint32_t index;
+  uint32_t value;
+} deferred_job_t;
+
+extern deferred_job_t deferred_job;
+void deferred_job_run(void); /* main loop */
+
 void airspy_usb_req_init(void);
 
 void usb_streaming_disable(void);

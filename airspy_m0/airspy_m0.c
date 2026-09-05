@@ -29,6 +29,8 @@
 #include <libopencm3/lpc43xx/m0/nvic.h>
 #include <libopencm3/lpc43xx/creg.h>
 #include <libopencm3/lpc43xx/rgu.h>
+#include <libopencm3/cm3/cortex.h>
+#include <libopencm3/cm3/cortex.h>
 
 #include <airspy_core.h>
 #include <si5351c.h>
@@ -207,18 +209,24 @@ void ADCHS_stop(uint8_t conf_num)
   stream_epoch++;
 }
 
+static void stream_queue_chunks(void);
+static volatile uint32_t stream_queued;
+static volatile uint32_t stream_run_epoch;
+
 void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint)
 {
   uint32_t before = usb_queue_active_count(endpoint);
   usb_queue_transfer_complete(endpoint);
   stream->delivered += before - usb_queue_active_count(endpoint);
   stream->usb_errors = usb_queue_transfer_errors;
+  if(stream_run_epoch == stream_epoch && get_receiver_mode() == RECEIVER_MODE_RX)
+    stream_queue_chunks();
   signal_sev();
 }
 
-static void stream_queue_chunks(uint32_t *queued_p)
+static void stream_queue_chunks(void)
 {
-  uint32_t queued = *queued_p;
+  uint32_t queued = stream_queued;
   uint32_t captured = stream->captured;
   uint32_t ring_chunks = stream->ring_chunks;
   uint32_t chunk_slots = stream->chunk_slots;
@@ -248,7 +256,7 @@ static void stream_queue_chunks(uint32_t *queued_p)
   }
 
   stream->queued = queued;
-  *queued_p = queued;
+  stream_queued = queued;
 }
 
 /* adchs_isr managed by M4 */
@@ -301,30 +309,33 @@ int main(void)
   usb_run(&usb_device);
 
   uint32_t epoch = stream_epoch;
-  uint32_t queued = 0;
-
+  stream_queued = 0;
+  stream_run_epoch = epoch;
   while(true)
   {
     signal_wfe();
-
+    deferred_job_run();
     if(epoch != stream_epoch)
     {
+      cm_disable_interrupts();
       epoch = stream_epoch;
-      queued = 0;
+      stream_queued = 0;
       if(get_receiver_mode() == RECEIVER_MODE_RX)
       {
         usb_endpoint_flush(&usb_endpoint_bulk_in);
-        queued = stream->captured;
-        stream->delivered = queued;
+        stream_queued = stream->captured;
+        stream->delivered = stream_queued;
         stream->lost = 0;
-        stream->queued = queued;
+        stream->queued = stream_queued;
       }
+      stream_run_epoch = epoch;
+      cm_enable_interrupts();
       continue;
     }
-
     if(get_receiver_mode() != RECEIVER_MODE_RX)
       continue;
-
-    stream_queue_chunks(&queued);
+    cm_disable_interrupts();
+    stream_queue_chunks();
+    cm_enable_interrupts();
   }
 }
