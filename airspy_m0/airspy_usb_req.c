@@ -890,6 +890,7 @@ const usb_transfer_stage_t stage)
     stream_status_buffer.ring_chunks = stream->ring_chunks;
     stream_status_buffer.chunk_bytes = stream->chunk_bytes;
     stream_status_buffer.chunk_samples = stream->chunk_stride / 2; /* raw 16-bit samples per chunk */
+    stream_status_buffer.m0_lag_max = stream->m0_lag_max;
 
     if(endpoint->setup.length < length)
       length = endpoint->setup.length;

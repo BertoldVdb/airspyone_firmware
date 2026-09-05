@@ -164,6 +164,7 @@ static __inline__ void stream_reset(void)
   stream->captured = 0;
   stream->overruns = 0;
   stream->backlog_max = 0;
+  stream->m0_lag_max = 0;
   adchs_epoch++;
 }
 
@@ -280,11 +281,16 @@ __attribute__ ((always_inline)) static inline void dma_chunk_done(void)
 
   if(queued != 0)
   {
+    uint32_t m0_lag = produced - queued;
+
     if((int32_t)backlog < 0)
       backlog = 0;
 
     if(backlog > stream->backlog_max)
       stream->backlog_max = backlog;
+
+    if((int32_t)m0_lag > 0 && m0_lag > stream->m0_lag_max)
+      stream->m0_lag_max = m0_lag;
 
     if((int32_t)(overwritten - consumed) >= 0 && (int32_t)(queued - overwritten) > 0)
       stream->overruns++;

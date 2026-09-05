@@ -98,6 +98,7 @@ typedef struct
   uint32_t ring_chunks;   /* chunks the device ring buffer holds */
   uint32_t chunk_bytes;   /* bytes per chunk on USB */
   uint32_t chunk_samples; /* real ADC samples per chunk */
+  uint32_t m0_lag_max; /* worst lag of the device's own USB queuing behind the ADC, in chunks */
 } airspy_stream_status_t;
 
 typedef enum
