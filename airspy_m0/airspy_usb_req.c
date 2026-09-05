@@ -357,8 +357,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
     version_string_len = strlen((char *)spiflash_buffer) + 1;
     version_string_len = (version_string_len + 3) & ~0x03; /* Round to a multiple of 4 */
 
-    usb_transfer_schedule_block(endpoint->in, spiflash_buffer, version_string_len);
-    usb_transfer_schedule_ack(endpoint->out);
+    usb_control_reply(endpoint, spiflash_buffer, version_string_len); /* may be exactly 64 bytes: needs the ZLP */
   }
   return USB_REQUEST_STATUS_OK;
 }
