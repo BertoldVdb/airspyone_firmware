@@ -47,6 +47,7 @@
 
 #include "airspy_conf.h"
 #include <airspy_stream.h>
+#include <airspy_watchdog.h>
 
 #define DEFAULT_ADCHS_CHAN (0)
 
@@ -522,6 +523,8 @@ void scs_dwt_cycle_counter_enabled(void)
 int main(void)
 {
   SCB_VTOR = (uint32_t)&vector_table;
+
+  watchdog_arm();
 
   scs_dwt_cycle_counter_enabled();
   pin_setup();

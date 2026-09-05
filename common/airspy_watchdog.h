@@ -25,27 +25,15 @@
 #include <stdint.h>
 #include "airspy_commands.h"
 
-/* Host-fed watchdog, a compile time option of the M0 firmware */
-#ifdef AIRSPY_HOST_WATCHDOG
+/* LPC4370 windowed watchdog, always armed */
 
-void watchdog_init(void);
-void watchdog_feed(void);
-void watchdog_host_contact(void);
+/* M4: arm as early as possible; nothing else to do on the M4 */
+void watchdog_arm(void);
+
+void watchdog_init(void); /* adopt the watchdog the M4 armed, enable the warning interrupt */
+void watchdog_heartbeat(void);     /* main loop: called on every iteration */
+void watchdog_feed(void); /* direct feed, for the host request and long flash waits */
+void watchdog_host_contact(void); /* an application started a stream or fed explicitly */
 void watchdog_get_status(airspy_watchdog_status_t* status);
-
-#else
-
-static inline void watchdog_init(void) {}
-static inline void watchdog_feed(void) {}
-static inline void watchdog_host_contact(void) {}
-static inline void watchdog_get_status(airspy_watchdog_status_t* status)
-{
-  status->flags = 0;
-  status->timeout_ms = 0;
-  status->remaining_ms = 0;
-  status->self_feeds_left = 0;
-}
-
-#endif
 
 #endif /* __AIRSPY_WATCHDOG_H */

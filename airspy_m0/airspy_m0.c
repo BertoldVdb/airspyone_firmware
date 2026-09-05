@@ -319,6 +319,8 @@ int main(void)
   {
     signal_wfe();
     deferred_job_run();
+    watchdog_heartbeat();
+
     if(epoch != stream_epoch)
     {
       cm_disable_interrupts();

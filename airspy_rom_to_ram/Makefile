@@ -38,7 +38,8 @@ SRC += \
 	rom_iap.c \
 	signal_mcu.c \
 	airspy_nos_conf.c \
-	airspy_mini_conf.c
+	airspy_mini_conf.c \
+	airspy_watchdog.c
 
 LDSCRIPT = ../common/LPC4370_M4_rom_to_ram.ld
 

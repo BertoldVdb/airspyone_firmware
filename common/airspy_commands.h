@@ -128,17 +128,18 @@ typedef struct
 #define AIRSPY_FRAME_WIRE_PACKED (6144)
 
 /* AIRSPY_WATCHDOG: wIndex 1 feeds the watchdog and reports */
-#define AIRSPY_WATCHDOG_FLAG_ARMED (1 << 0) /* firmware built with the watchdog and it is running */
+#define AIRSPY_WATCHDOG_FLAG_ARMED (1 << 0)             /* the watchdog is running */
 #define AIRSPY_WATCHDOG_FLAG_RESET_BY_WATCHDOG (1 << 1) /* the last reset was a watchdog time-out (best effort) */
-#define AIRSPY_WATCHDOG_FLAG_HOST_OWNED (1 << 2) /* the host has made contact; only the host feeds from now on */
-#define AIRSPY_WATCHDOG_SELF_FEEDS (6) /* self feeds before contact, about 5.6 s each */
+#define AIRSPY_WATCHDOG_FLAG_HOST_OWNED (1 << 2) /* strict mode: the host has made contact, only the host feeds */
+#define AIRSPY_WATCHDOG_FLAG_STRICT (1 << 3) /* firmware built with WATCHDOG=1: the host protocol applies */
+#define AIRSPY_WATCHDOG_SELF_FEEDS (6) /* strict mode: self feeds before contact, about 5.6 s each */
 
 typedef struct
 {
   uint32_t flags;           /* AIRSPY_WATCHDOG_FLAG_* */
   uint32_t timeout_ms;      /* time between feeds the device tolerates */
   uint32_t remaining_ms; /* time left before a reset when the reply was built */
-  uint32_t self_feeds_left; /* self feeds the device may still do before contact */
+  uint32_t self_feeds_left; /* strict mode: self feeds left before contact; 0xFFFFFFFF when unlimited */
 } airspy_watchdog_status_t;
 
 typedef enum

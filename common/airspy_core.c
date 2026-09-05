@@ -635,7 +635,6 @@ void sys_clock_init(void)
   CCU1_CLK_M4_EMCDIV_CFG &= ~(1);
   //CCU1_CLK_M4_M0APP_CFG &= ~(1);
   //CCU1_CLK_M4_VADC_CFG &= ~(1);
-  CCU1_CLK_M4_WWDT_CFG &= ~(1);
   CCU1_CLK_M4_USART0_CFG &= ~(1);
   CCU1_CLK_M4_UART1_CFG &= ~(1);
   CCU1_CLK_M4_SSP0_CFG &= ~(1);

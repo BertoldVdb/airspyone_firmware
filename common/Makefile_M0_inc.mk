@@ -53,7 +53,6 @@ LDFLAGS += -mcpu=cortex-m0 -mthumb -DTHUMB \
 
 OBJ += $(SRC:.c=.o)
 
-# make WATCHDOG=1 arms the LPC4370 watchdog at boot
 ifeq ($(WATCHDOG),1)
 CFLAGS += -DAIRSPY_HOST_WATCHDOG=1
 WATCHDOG_STAMP = .watchdog_on
