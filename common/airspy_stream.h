@@ -31,16 +31,27 @@ extern "C"
 #endif
 
 /* ADC -> USB ring buffer, shared by the M4 */
-#define AIRSPY_STREAM_RING_ADDR   (0x10008000)
-#define AIRSPY_STREAM_RING_SIZE   (98304) /* 96KB */
+#define AIRSPY_STREAM_PIECE_SIZE  (16384)
+#define AIRSPY_STREAM_NUM_PIECES  (11)
+#define AIRSPY_STREAM_SLOT_SIZE   (8192) /* one GPDMA linked-list item fills one slot */
+#define AIRSPY_STREAM_NUM_SLOTS   (AIRSPY_STREAM_NUM_PIECES * 2)
 
-/* One GPDMA linked-list item fills one slot */
-#define AIRSPY_STREAM_SLOT_SIZE   (8192)
-#define AIRSPY_STREAM_NUM_SLOTS   (AIRSPY_STREAM_RING_SIZE / AIRSPY_STREAM_SLOT_SIZE) /* 12 */
+static const uint32_t airspy_stream_pieces[AIRSPY_STREAM_NUM_PIECES] =
+{
+  0x10008000, 0x1000C000, 0x10010000, 0x10014000, 0x10018000, 0x1001C000, /* local SRAM 1 */
+  0x10080000, 0x10084000, 0x10088000, 0x1008C000,                         /* local SRAM 2 */
+  0x2000C000                                                              /* AHB SRAM */
+};
+
+static inline uint8_t* airspy_stream_slot(uint32_t slot)
+{
+  return (uint8_t*)(airspy_stream_pieces[slot / 2] + (slot & 1) * AIRSPY_STREAM_SLOT_SIZE);
+}
 
 /* Unpacked: one chunk is two slots of 16-bit samples */
 #define AIRSPY_STREAM_CHUNK_BYTES_UNPACKED  (2 * AIRSPY_STREAM_SLOT_SIZE)
 /* Packed: one chunk is one slot */
+#define AIRSPY_STREAM_CHUNK_BYTES_PACKED    ((AIRSPY_STREAM_SLOT_SIZE / 4) * 3)
 #define AIRSPY_STREAM_CHUNK_BYTES_PACKED    ((AIRSPY_STREAM_SLOT_SIZE / 4) * 3)
 
 /* Transfers the M0 can hold in the USB controller at once */
@@ -51,7 +62,7 @@ typedef struct
 {
   volatile uint32_t captured; /* chunks ready for USB: DMA done and, when packing, packed */
   volatile uint32_t chunk_bytes;  /* bytes per chunk as sent over USB */
-  volatile uint32_t chunk_stride; /* bytes between consecutive chunk starts in the ring */
+  volatile uint32_t chunk_slots; /* DMA slots per chunk: 2 unpacked, 1 packed */
   volatile uint32_t ring_chunks;  /* number of chunks the ring holds */
   volatile uint32_t header_bytes; /* AIRSPY_FRAME_HEADER_SIZE when framing is on, else 0 */
   volatile uint32_t chunk_samples;/* real ADC samples per chunk */

@@ -71,7 +71,6 @@ volatile uint32_t dma_chunks_done = 0;
 static uint32_t packed_chunks = 0;
 static volatile uint32_t adchs_epoch = 0;
 
-uint8_t* const usb_bulk_buffer = (uint8_t*)USB_BULK_BUFFER_START;
 
 volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
@@ -223,14 +222,14 @@ static void publish_stream_format(void)
   if(use_packing == 0)
   {
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
-    stream->chunk_stride = AIRSPY_STREAM_CHUNK_BYTES_UNPACKED;
+    stream->chunk_slots = 2;
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS / 2;
     stream->chunk_samples = (AIRSPY_STREAM_CHUNK_BYTES_UNPACKED - header) / 2;
   }
   else
   {
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_PACKED;
-    stream->chunk_stride = AIRSPY_STREAM_SLOT_SIZE;
+    stream->chunk_slots = 1;
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS;
     stream->chunk_samples = ((AIRSPY_STREAM_CHUNK_BYTES_PACKED - header) / 3) * 2;
   }
@@ -263,16 +262,20 @@ void adchs_start(uint8_t chan_num)
   }
 
   /* Clear ADCHS Buffer */
-  dst = (uint32_t *)ADCHS_DATA_BUFFER;
-  for(i=0; i<(ADCHS_DATA_BUFFER_SIZE_BYTE/4); i++)
+  for(i=0; i<AIRSPY_STREAM_NUM_PIECES; i++)
   {
-    dst[i] = 0;
+    uint32_t k;
+    dst = (uint32_t *)airspy_stream_pieces[i];
+    for(k=0; k<(AIRSPY_STREAM_PIECE_SIZE/4); k++)
+    {
+      dst[k] = 0;
+    }
   }
   stream_reset();
 
   ADCHS_init();
   ADCHS_desc_init(chan_num);
-  ADCHS_DMA_init((uint32_t)ADCHS_DATA_BUFFER, use_packing, stream->header_bytes);
+  ADCHS_DMA_init(use_packing, stream->header_bytes);
 
   led_on();
   LPC_ADCHS->TRIGGER = 1;
@@ -563,9 +566,9 @@ int main(void)
       {
         uint32_t epoch = adchs_epoch;
         uint32_t chunk = packed_chunks;
-        uint32_t offset = (chunk % AIRSPY_STREAM_NUM_SLOTS) * AIRSPY_STREAM_SLOT_SIZE + stream->header_bytes;
+        uint32_t* slot = (uint32_t*)(airspy_stream_slot(chunk % AIRSPY_STREAM_NUM_SLOTS) + stream->header_bytes);
 
-        pack((uint32_t*)&usb_bulk_buffer[offset], (uint32_t*)&usb_bulk_buffer[offset], stream->chunk_samples);
+        pack(slot, slot, stream->chunk_samples);
 
         if(epoch != adchs_epoch)
           break;

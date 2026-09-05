@@ -39,12 +39,6 @@ typedef struct
   uint32_t control;
 } t_gpdma_lli;
 
-typedef struct
-{
-  uint8_t data[ADCHS_DMA_NB_BUFFER][ADCHS_DATA_TRANSFER_SIZE_BYTE];
-} t_adchs_buffer;
-
-t_adchs_buffer* adchs_data_buffer_filled = (t_adchs_buffer*)ADCHS_DATA_BUFFER;
 
 /* Allocate aligned buffer on 16bytes for DMA LLI */
 t_gpdma_lli adchs_dma_lli[ADCHS_DMA_NUM_LLI] __attribute__ ((aligned(16)));
@@ -68,9 +62,9 @@ void ADCHS_DMA_init_stop(void)
   LPC_GPDMA->CONFIG = 0x00; /* Disable DMA channels, little endian */
 }
 
-void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed, uint32_t header_bytes)
+void ADCHS_DMA_init(uint8_t packed, uint32_t header_bytes)
 {
-  const uint32_t slot_bytes = ADCHS_DATA_BUFFER_SIZE_BYTE / ADCHS_DMA_NUM_LLI;
+  const uint32_t slot_bytes = AIRSPY_STREAM_SLOT_SIZE;
   uint32_t nb_dma_transfer;
   int i;
 
@@ -97,7 +91,7 @@ void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed, uint32_t header_bytes)
     nb_dma_transfer = bytes / 4;
 
     adchs_dma_lli[i].src_addr = ADCHS_DMA_READ_SRC;
-    adchs_dma_lli[i].dst_addr = ((uint32_t)dest_addr) + (slot_bytes * i) + offset;
+    adchs_dma_lli[i].dst_addr = (uint32_t)airspy_stream_slot(i) + offset;
     /* Modulo with round rubin last LLI point to First in infinite loop */
     adchs_dma_lli[i].next_lli = (uint32_t)(&adchs_dma_lli[(i+1)%ADCHS_DMA_NUM_LLI]);
 

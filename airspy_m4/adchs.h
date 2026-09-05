@@ -31,7 +31,7 @@ extern "C"
 
 void ADCHS_deinit(void);
 void ADCHS_init(void);
-void ADCHS_DMA_init(uint32_t dest_addr, uint8_t packed, uint32_t header_bytes);
+void ADCHS_DMA_init(uint8_t packed, uint32_t header_bytes);
 void ADCHS_desc_init(uint8_t chan_num);
 void ADCHS_stop(uint8_t conf_num);
 
@@ -40,14 +40,7 @@ void dma_isr(void);
 
 #include <airspy_stream.h>
 
-#define USB_BULK_BUFFER_START (AIRSPY_STREAM_RING_ADDR)
-
-#define ADCHS_DATA_BUFFER_SIZE_BYTE (AIRSPY_STREAM_RING_SIZE)
-#define ADCHS_DATA_BUFFER (USB_BULK_BUFFER_START)
-
-#define ADCHS_DMA_NUM_LLI (AIRSPY_STREAM_NUM_SLOTS) /* Corresponds to number of transfer */
-#define ADCHS_DMA_NB_BUFFER ( (ADCHS_DMA_NUM_LLI/2) )
-#define ADCHS_DATA_TRANSFER_SIZE_BYTE ( ((ADCHS_DATA_BUFFER_SIZE_BYTE/ADCHS_DMA_NUM_LLI)*2) ) /* Size of Each Transfer in Byte */
+#define ADCHS_DMA_NUM_LLI (AIRSPY_STREAM_NUM_SLOTS) /* one linked-list item per ring slot */
 
 #define ADCHS_DMA_WRITE 7
 #define ADCHS_DMA_READ  8

@@ -68,7 +68,6 @@ volatile airspy_mcore_t *set_framing = (airspy_mcore_t *)((&cm0_data_share)+3);
 #define MASTER_TXEV_FLAG  ((uint32_t *) 0x40043130)
 #define MASTER_TXEV_QUIT()  { *MASTER_TXEV_FLAG = 0x0; }
 
-uint8_t* const usb_bulk_buffer = (uint8_t*)AIRSPY_STREAM_RING_ADDR;
 
 const char version_string[] = " " AIRSPY_FW_GIT_TAG " " AIRSPY_FW_CHECKIN_DATE;
 
@@ -221,7 +220,7 @@ static void stream_queue_chunks(uint32_t *queued_p)
   uint32_t queued = *queued_p;
   uint32_t captured = stream->captured;
   uint32_t ring_chunks = stream->ring_chunks;
-  uint32_t chunk_stride = stream->chunk_stride;
+  uint32_t chunk_slots = stream->chunk_slots;
   uint32_t chunk_bytes = stream->chunk_bytes;
   uint32_t header_bytes = stream->header_bytes;
   uint32_t chunk_samples = stream->chunk_samples;
@@ -239,10 +238,10 @@ static void stream_queue_chunks(uint32_t *queued_p)
 
   while((int32_t)(captured - queued) > 0)
   {
-    uint32_t offset = (queued % ring_chunks) * chunk_stride;
+    uint8_t* chunk = airspy_stream_slot((queued % ring_chunks) * chunk_slots);
     if(header_bytes)
-      stream_write_header(&usb_bulk_buffer[offset], queued, chunk_samples, chunk_bytes);
-    if(usb_transfer_schedule(&usb_endpoint_bulk_in, &usb_bulk_buffer[offset], chunk_bytes) != 0)
+      stream_write_header(chunk, queued, chunk_samples, chunk_bytes);
+    if(usb_transfer_schedule(&usb_endpoint_bulk_in, chunk, chunk_bytes) != 0)
       break;
     queued++;
   }
