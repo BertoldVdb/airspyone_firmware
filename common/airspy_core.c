@@ -779,11 +779,15 @@ void cpu_clock_pll1_high_speed(const airspy_pll1_hs_t* const pt_airspy_pll1_hs_c
 
 void led_on(void)
 {
+  if(AIRSPY_HW_MINI_PINS(airspy_conf->conf_hw.hardware_type))
+    return;
   gpio_set(PORT_EN_LED1, PIN_EN_LED1);
 }
 
 void led_off(void)
 {
+  if(AIRSPY_HW_MINI_PINS(airspy_conf->conf_hw.hardware_type))
+    return;
   gpio_clear(PORT_EN_LED1, PIN_EN_LED1);
 }
 

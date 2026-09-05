@@ -5,19 +5,39 @@
 #include <libopencm3/lpc43xx/m4/nvic.h>
 #include <libopencm3/cm3/nvic.h>
 
+#include "airspy_conf.h"
 #include "airspy_stream.h"
 #include "pps.h"
 
-#define PPS_TIMER      TIMER3
-#define PPS_TIMER_IRQ  NVIC_TIMER3_IRQ
-#define PPS_PIN        P2_2
-#define PPS_PIN_FUNC   SCU_CONF_FUNCTION6 /* T3_CAP2 */
-#define PPS_CCR        (TIMER_CCR_CAP2RE | TIMER_CCR_CAP2I)
-#define PPS_CR         TIMER_CR2(PPS_TIMER)
-#define PPS_IR_CAP     TIMER_IR_CR2INT
-#define PPS_GIMA_SEL   GIMA_CAP3_2_IN
-#define PPS_GIMA_SELECT (3)
+typedef struct
+{
+  uint32_t timer;             /* TIMERn base */
+  uint32_t irq;
+  volatile uint32_t* ccu_cfg;
+  uint32_t pin;
+  uint32_t pin_func;
+  uint32_t ccr;
+  uint32_t ir_cap;            /* IR bit of the capture channel */
+  uint32_t cr_offset;         /* capture register of the channel */
+  volatile uint32_t* gima;    /* CAPn_m_IN multiplexer */
+  uint32_t gima_select;
+} pps_input_t;
 
+static const pps_input_t pps_r2 = {
+  TIMER3, NVIC_TIMER3_IRQ, &CCU1_CLK_M4_TIMER3_CFG,
+  P2_2, SCU_CONF_FUNCTION6,
+  TIMER_CCR_CAP2RE | TIMER_CCR_CAP2I, TIMER_IR_CR2INT, 0x034,
+  &GIMA_CAP3_2_IN, 3
+};
+
+static const pps_input_t pps_mini = {
+  TIMER0, NVIC_TIMER0_IRQ, &CCU1_CLK_M4_TIMER0_CFG,
+  P1_17, SCU_CONF_FUNCTION4,
+  TIMER_CCR_CAP3RE | TIMER_CCR_CAP3I, TIMER_IR_CR3INT, 0x038,
+  &GIMA_CAP0_3_IN, 1
+};
+
+static const pps_input_t* in;
 
 static volatile uint32_t wraps;
 static uint64_t anchor;           /* 64-bit timer count at the ADC trigger */
@@ -33,8 +53,8 @@ static uint64_t timer_now64(void)
   do
   {
     h1 = wraps;
-    tc = TIMER_TC(PPS_TIMER);
-    pending = TIMER_IR(PPS_TIMER) & TIMER_IR_MR0INT;
+    tc = TIMER_TC(in->timer);
+    pending = TIMER_IR(in->timer) & TIMER_IR_MR0INT;
     h2 = wraps;
   } while(h1 != h2);
   if(pending && tc < 0x80000000)
@@ -44,27 +64,29 @@ static uint64_t timer_now64(void)
 
 void pps_init(void)
 {
-  CCU1_CLK_M4_TIMER3_CFG |= 1;
-  while((CCU1_CLK_M4_TIMER3_STAT & 1) == 0);
+  in = AIRSPY_HW_MINI_PINS(airspy_conf->conf_hw.hardware_type) ? &pps_mini : &pps_r2;
 
-  TIMER_TCR(PPS_TIMER) = TIMER_TCR_CRST;
-  TIMER_TCR(PPS_TIMER) = 0;
-  TIMER_PR(PPS_TIMER) = 0;
-  TIMER_MR0(PPS_TIMER) = 0xFFFFFFFF;
-  TIMER_MCR(PPS_TIMER) = TIMER_MCR_MR0I;
-  TIMER_CCR(PPS_TIMER) = PPS_CCR;
-  TIMER_IR(PPS_TIMER) = 0xFF;
+  in->ccu_cfg[0] |= 1;
+  while((in->ccu_cfg[1] & 1) == 0);
 
-  PPS_GIMA_SEL = PPS_GIMA_SELECT << 4;
-  scu_pinmux(PPS_PIN, PPS_PIN_FUNC | SCU_CONF_EPD_EN_PULLDOWN | SCU_CONF_EPUN_DIS_PULLUP | SCU_CONF_EZI_EN_IN_BUFFER);
+  TIMER_TCR(in->timer) = TIMER_TCR_CRST;
+  TIMER_TCR(in->timer) = 0;
+  TIMER_PR(in->timer) = 0;
+  TIMER_MR0(in->timer) = 0xFFFFFFFF;
+  TIMER_MCR(in->timer) = TIMER_MCR_MR0I;
+  TIMER_CCR(in->timer) = in->ccr;
+  TIMER_IR(in->timer) = 0xFF;
+
+  *in->gima = in->gima_select << 4;
+  scu_pinmux(in->pin, in->pin_func | SCU_CONF_EPD_EN_PULLDOWN | SCU_CONF_EPUN_DIS_PULLUP | SCU_CONF_EZI_EN_IN_BUFFER);
 
   wraps = 0;
   armed = 0;
   stream->pps_seq = 0;
   stream->pps_count = 0;
-  nvic_set_priority(PPS_TIMER_IRQ, 0);
-  nvic_enable_irq(PPS_TIMER_IRQ);
-  TIMER_TCR(PPS_TIMER) = TIMER_TCR_CEN;
+  nvic_set_priority(in->irq, 0);
+  nvic_enable_irq(in->irq);
+  TIMER_TCR(in->timer) = TIMER_TCR_CEN;
 }
 
 static uint32_t gcd32(uint32_t a, uint32_t b)
@@ -100,21 +122,21 @@ void pps_stream_stop(void)
   armed = 0;
 }
 
-void timer3_isr(void)
+static void pps_isr(void)
 {
-  uint32_t ir = TIMER_IR(PPS_TIMER);
+  uint32_t ir = TIMER_IR(in->timer);
 
   if(ir & TIMER_IR_MR0INT)
     wraps++;
 
-  if(ir & PPS_IR_CAP)
+  if(ir & in->ir_cap)
   {
-    uint32_t cap = PPS_CR;
+    uint32_t cap = MMIO32(in->timer + in->cr_offset);
     uint32_t h = wraps;
 
     if((ir & TIMER_IR_MR0INT) && cap >= 0x80000000)
       h--;
-    else if(!(ir & TIMER_IR_MR0INT) && (TIMER_IR(PPS_TIMER) & TIMER_IR_MR0INT) && cap < 0x80000000)
+    else if(!(ir & TIMER_IR_MR0INT) && (TIMER_IR(in->timer) & TIMER_IR_MR0INT) && cap < 0x80000000)
       h++;
 
     if(armed)
@@ -135,5 +157,15 @@ void timer3_isr(void)
     }
   }
 
-  TIMER_IR(PPS_TIMER) = ir;
+  TIMER_IR(in->timer) = ir;
+}
+
+void timer0_isr(void)
+{
+  pps_isr();
+}
+
+void timer3_isr(void)
+{
+  pps_isr();
 }

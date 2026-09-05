@@ -52,6 +52,13 @@ extern uint32_t conf_data_share_size; /* defined in linker script */
 #define HW_TYPE_AIRSPY_NOS  (HW_FEATURE_R820T|HW_FEATURE_SI5351C) /* Hardware AirSpy NOS */
 #define HW_TYPE_AIRSPY_MINI (HW_FEATURE_R820T) /* Hardware AirSpy MINI */
 
+/* Pin assignment of the PPS input (pps.c) and the serial pass-through */
+#ifdef AIRSPY_PINS_MINI
+#define AIRSPY_HW_MINI_PINS(hw_type) (1)
+#else
+#define AIRSPY_HW_MINI_PINS(hw_type) (((hw_type) & HW_FEATURE_SI5351C) == 0)
+#endif
+
 /* For each configuration the index corresponds to uint32_t */
 typedef struct
 {

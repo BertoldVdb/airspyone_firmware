@@ -1078,6 +1078,8 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   if(stage == USB_TRANSFER_STAGE_SETUP)
   {
     uint32_t baud = ((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value;
+    if(!airspy_uart_available())
+      return USB_REQUEST_STATUS_STALL;
     airspy_uart_init(baud);
     usb_transfer_schedule_ack(endpoint->in);
   }
@@ -1090,7 +1092,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
   uint32_t len = endpoint->setup.length;
   if(stage == USB_TRANSFER_STAGE_SETUP)
   {
-    if(len == 0 || len > sizeof(uart_write_buffer))
+    if(len == 0 || len > sizeof(uart_write_buffer) || !airspy_uart_available())
       return USB_REQUEST_STATUS_STALL;
     usb_transfer_schedule_block(endpoint->out, uart_write_buffer, len);
     return USB_REQUEST_STATUS_OK;

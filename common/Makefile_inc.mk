@@ -59,7 +59,11 @@ OBJ += $(SRC:.c=.o)
 ifeq ($(NOFLASH),1)
 CFLAGS += -DAIRSPY_NO_FLASH=1
 endif
-OPTS_STAMP = .opts_f$(NOFLASH)
+# make PINS=mini: the Mini pin assignment
+ifeq ($(PINS),mini)
+CFLAGS += -DAIRSPY_PINS_MINI=1
+endif
+OPTS_STAMP = .opts_f$(NOFLASH)_p$(PINS)
 
 # Be silent per default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)
