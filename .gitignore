@@ -1,0 +1,16 @@
+# build outputs
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.srec
+*.list
+*.map
+*.hdr
+*.dfu
+_header.bin
+# build option stamps
+.opts_*
+.watchdog_on
+.watchdog_off
