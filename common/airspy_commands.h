@@ -102,6 +102,7 @@ typedef struct
   uint32_t m0_lag_max; /* worst lag of the device's own USB queuing behind the ADC, in chunks */
   uint32_t dma_errors; /* ADC DMA bus errors: the DMA could not write part of the ring */
   uint32_t usb_errors; /* bulk transfers the USB controller retired with an error */
+  uint32_t adc_overflows; /* chunks during which the ADC FIFO overflowed */
 } airspy_stream_status_t;
 
 #define AIRSPY_FRAME_HEADER_SIZE (96)

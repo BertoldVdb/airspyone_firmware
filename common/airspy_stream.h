@@ -70,6 +70,7 @@ typedef struct
   volatile uint32_t backlog_max; /* highest number of chunks pending at the device */
   volatile uint32_t m0_lag_max;
   volatile uint32_t dma_errors; /* GPDMA error interrupts: the ADC DMA could not write the ring (bus error) */
+  volatile uint32_t adc_overflows; /* chunks in which the ADC FIFO overflow flag was set */
   volatile uint32_t delivered; /* chunks whose USB transfer completed (USB ISR) */
   volatile uint32_t lost; /* chunks never queued because the DMA overwrote them first (main loop) */
   volatile uint32_t queued; /* chunks handed to the USB controller (main loop) */

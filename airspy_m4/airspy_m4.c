@@ -167,6 +167,7 @@ static __inline__ void stream_reset(void)
   stream->backlog_max = 0;
   stream->m0_lag_max = 0;
   stream->dma_errors = 0;
+  stream->adc_overflows = 0;
   adchs_epoch++;
 }
 
@@ -379,6 +380,12 @@ void dma_isr(void)
     LPC_GPDMA->INTERRCLR |= status;
   } 
 #endif
+
+  if(LPC_ADCHS->STATUS0 & STAT0_FIFO_OVERFLOW)
+  {
+    LPC_ADCHS->CLR_STAT0 = STAT0_FIFO_OVERFLOW;
+    stream->adc_overflows++;
+  }
 
   status = LPC_GPDMA->INTERRSTAT;
   if(status)
