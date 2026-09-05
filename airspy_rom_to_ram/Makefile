@@ -48,3 +48,8 @@ LDSCRIPT = ../common/LPC4370_M4_rom_to_ram.ld
 
 include ../common/Makefile_inc.mk
 
+# The M0 and M0s images are pulled in with .incbin
+m0_bin.o: ../airspy_m0/airspy_m0.bin
+m0s_bin.o: ../airspy_m0s/airspy_m0s.bin
+../airspy_m0/airspy_m0.bin: ;
+../airspy_m0s/airspy_m0s.bin: ;
