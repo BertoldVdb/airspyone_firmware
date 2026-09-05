@@ -25,6 +25,7 @@
 #include "airspy_core.h"
 #include "airspy_conf.h"
 #include "airspy_calib.h"
+#include "w25q80bv.h"
 #include "si5351c.h"
 #include <libopencm3/lpc43xx/i2c.h>
 #include <libopencm3/lpc43xx/ccu.h>
@@ -368,6 +369,7 @@ void sys_clock_init(void)
   uint16_t nb_struct_u16;
   airspy_calib_t airspy_calib = { 0 };
   airspy_calib_t* airspy_calib_flash;
+  uint8_t apply_calib = 0;
 
   /* After boot the CPU runs at 96 MHz */
   /* cpu runs from: IRC (12MHz) >> PLL M = 24, FCCO @ 288 MHz direct mode >> IDIVC = 4 >> 96 MHz */
@@ -463,6 +465,7 @@ void sys_clock_init(void)
   /* Set default r820t_conf_rw.if_freq to airspy_m0_m4_conf[0] => r820t_if_freq  */
   airspy_conf->r820t_conf_rw.if_freq = airspy_conf->airspy_m0_m4_conf[0].airspy_m0_conf.r820t_if_freq;
 
+  /* Load calibration data */
   if(!IMAGE_IN_RAM())
   {
     addr = (ROMFLASH_BASE_ADDR + AIRSPY_FLASH_CALIB_OFFSET); /* Addr from Flash Configuration 0 (Calibration Data) */
@@ -492,11 +495,7 @@ void sys_clock_init(void)
       /* Apply SI5351C configuration */
       si5351c_airspy_config(&airspy_conf->si5351c_config[AIRSPY_SI5351C_CONFIG_XTAL]);
 
-      /* Check calibration is valid / enabled */
-      if(airspy_calib.header == AIRSPY_FLASH_CALIB_HEADER)
-      {
-        airspy_conf->r820t_conf_rw.xtal_freq = sys_calib_r820t(airspy_conf->r820t_conf_rw.xtal_freq, airspy_calib.correction_ppb);
-      }
+      apply_calib = 1;
     }else
     {
         si5351c_airspy_config(&airspy_conf->si5351c_config[AIRSPY_SI5351C_CONFIG_CLKIN]);
@@ -512,11 +511,7 @@ void sys_clock_init(void)
     si5351c_read[3] = si5351c_read_single(0);
   }else
   {
-    /* Check calibration is valid / enabled */
-    if(airspy_calib.header == AIRSPY_FLASH_CALIB_HEADER)
-    {
-      airspy_conf->r820t_conf_rw.xtal_freq = sys_calib_r820t(airspy_conf->r820t_conf_rw.xtal_freq, airspy_calib.correction_ppb);
-    }
+    apply_calib = 1;
   }
 
   pt_airspy_sys_conf = &airspy_conf->airspy_m4_init_conf;
@@ -533,6 +528,16 @@ void sys_clock_init(void)
   /* Connect PLL1 to M4/M0 core, Peripheral, APB1, APB3 */
   /* Use PLL1 as clock source for BASE_M4_CLK (CPU) */
   CGU_BASE_M4_CLK = (CGU_BASE_M4_CLK_CLK_SEL(CGU_SRC_PLL1) | CGU_BASE_M4_CLK_AUTOBLOCK);
+
+  if(IMAGE_IN_RAM())
+  {
+    w25q80bv_setup();
+    w25q80bv_read(AIRSPY_FLASH_CALIB_OFFSET, sizeof(airspy_calib_t), (uint8_t*)&airspy_calib);
+  }
+  if(apply_calib && (airspy_calib.header == AIRSPY_FLASH_CALIB_HEADER))
+  {
+    airspy_conf->r820t_conf_rw.xtal_freq = sys_calib_r820t(airspy_conf->r820t_conf_rw.xtal_freq, airspy_calib.correction_ppb);
+  }
 
   /* Switch peripheral clock over to use PLL1 */
   CGU_BASE_PERIPH_CLK = CGU_BASE_PERIPH_CLK_AUTOBLOCK
