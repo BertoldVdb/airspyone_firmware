@@ -83,7 +83,7 @@ program: $(BINARY).dfu
 %.dfu: %.bin
 	$(Q)rm -f _tmp.dfu _header.bin
 	$(Q)cp $(*).bin _tmp.dfu
-	$(Q)dfu-suffix --vid=0x1fc9 --pid=0x000c --did=0x0 -s 0 -a _tmp.dfu
+	$(Q)dfu-suffix --vid=0x1fc9 --pid=0x000c --did=0x0 -a _tmp.dfu
 	$(Q)python -c "import os.path; import struct; print('0000000: da ff ' + ' '.join(map(lambda s: '%02x' % ord(s), struct.pack('<H', os.path.getsize('$(*).bin') / 512 + 1))) + ' ff ff ff ff')" | xxd -g1 -r > _header.bin
 	$(Q)cat _header.bin _tmp.dfu >$(*).dfu
 	$(Q)rm -f _tmp.dfu _header.bin

@@ -53,3 +53,9 @@ m0_bin.o: ../airspy_m0/airspy_m0.bin
 m0s_bin.o: ../airspy_m0s/airspy_m0s.bin
 ../airspy_m0/airspy_m0.bin: ;
 ../airspy_m0s/airspy_m0s.bin: ;
+
+# RAM-only image for the LPC4370 ROM DFU mode
+dfu:
+	$(Q)$(MAKE) BINARY=airspy_dfu LDSCRIPT=../common/LPC4370_M4_dfu.ld airspy_dfu.dfu
+
+.PHONY: dfu
