@@ -26,6 +26,8 @@
 
 # derived primarily from Makefiles in libopencm3
 
+.DEFAULT_GOAL := all
+
 AIRSPY_OPTS = -DLPC43XX -DLPC43XX_M4 -DCORE_M4
 
 LDSCRIPT ?= ../common/LPC4370_M4.ld
