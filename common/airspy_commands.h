@@ -93,8 +93,8 @@ typedef struct
   uint32_t captured;      /* chunks captured by the ADC DMA */
   uint32_t delivered; /* chunks whose USB transfer to the host completed */
   uint32_t lost; /* chunks overwritten before they could be sent: the sample stream has gaps */
-  uint32_t overruns; /* times the DMA started overwriting a chunk not yet delivered */
-  uint32_t backlog_max; /* worst (captured - delivered) seen, must stay below ring_chunks */
+  uint32_t overruns;
+  uint32_t backlog_max; /* worst number of chunks pending at the device */
   uint32_t ring_chunks;   /* chunks the device ring buffer holds */
   uint32_t chunk_bytes;   /* bytes per chunk on USB */
   uint32_t chunk_samples; /* real ADC samples per chunk */

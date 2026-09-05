@@ -145,6 +145,8 @@ void usb_configuration_changed(usb_device_t* const device)
 void ADCHS_start(uint8_t conf_num)
 {
   stream->delivered = 0;
+  stream->lost = 0;
+  stream->queued = 0;
 
   start_stop_adchs_m4(conf_num, START_ADCHS_CMD);
 
@@ -214,6 +216,7 @@ static void stream_queue_chunks(uint32_t *queued_p)
     queued++;
   }
 
+  stream->queued = queued;
   *queued_p = queued;
 }
 
@@ -277,9 +280,14 @@ int main(void)
     {
       epoch = stream_epoch;
       queued = 0;
-      stream->lost = 0;
       if(get_receiver_mode() == RECEIVER_MODE_RX)
+      {
         usb_endpoint_flush(&usb_endpoint_bulk_in);
+        queued = stream->captured;
+        stream->delivered = queued;
+        stream->lost = 0;
+        stream->queued = queued;
+      }
       continue;
     }
 

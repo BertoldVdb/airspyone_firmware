@@ -271,18 +271,24 @@ void adchs_stop(void)
 __attribute__ ((always_inline)) static inline void dma_chunk_done(void)
 {
   uint32_t produced = dma_chunks_done + 1;
-  uint32_t backlog = produced - stream->delivered;
+  uint32_t queued = stream->queued;
+  uint32_t consumed = stream->delivered + stream->lost;
+  uint32_t backlog = produced - consumed;
+  uint32_t overwritten = produced - stream->ring_chunks;
 
   dma_chunks_done = produced;
 
-  if((int32_t)backlog < 0)
-    backlog = 0;
+  if(queued != 0)
+  {
+    if((int32_t)backlog < 0)
+      backlog = 0;
 
-  if(backlog > stream->backlog_max)
-    stream->backlog_max = backlog;
+    if(backlog > stream->backlog_max)
+      stream->backlog_max = backlog;
 
-  if(backlog >= stream->ring_chunks)
-    stream->overruns++;
+    if((int32_t)(overwritten - consumed) >= 0 && (int32_t)(queued - overwritten) > 0)
+      stream->overruns++;
+  }
 
   if(use_packing == 0)
   {

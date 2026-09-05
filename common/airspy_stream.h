@@ -49,10 +49,11 @@ typedef struct
   volatile uint32_t chunk_bytes;  /* bytes per chunk as sent over USB */
   volatile uint32_t chunk_stride; /* bytes between consecutive chunk starts in the ring */
   volatile uint32_t ring_chunks;  /* number of chunks the ring holds */
-  volatile uint32_t overruns; /* DMA started overwriting a chunk that was not delivered yet */
-  volatile uint32_t backlog_max; /* highest (produced - delivered) seen at a DMA chunk completion */
-  volatile uint32_t delivered;    /* chunks whose USB transfer completed */
-  volatile uint32_t lost; /* chunks never queued because the DMA overwrote them first */
+  volatile uint32_t overruns;
+  volatile uint32_t backlog_max; /* highest number of chunks pending at the device */
+  volatile uint32_t delivered; /* chunks whose USB transfer completed (USB ISR) */
+  volatile uint32_t lost; /* chunks never queued because the DMA overwrote them first (main loop) */
+  volatile uint32_t queued; /* chunks handed to the USB controller (main loop) */
 } airspy_stream_state_t;
 
 extern uint32_t cm4_data_share; /* defined in linker script */
