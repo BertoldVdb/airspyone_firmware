@@ -78,6 +78,15 @@ typedef struct
   volatile uint32_t pps_index_lo;  /* sample index of the last edge */
   volatile uint32_t pps_index_hi;
   volatile uint32_t pps_fraction; /* position within that sample, 1/2^32 sample units */
+  /* USB Start-Of-Frame capture (M4 timer ISR) */
+  volatile uint32_t sof_seq;
+  volatile uint32_t sof_count;     /* tagged SOFs since the stream started */
+  volatile uint32_t sof_edges;     /* every SOF captured since the stream started */
+  volatile uint32_t sof_index_lo;  /* sample index of the last tagged SOF */
+  volatile uint32_t sof_index_hi;
+  volatile uint32_t sof_fraction;
+  volatile uint32_t sof_frame;     /* its USB frame index, see airspy_frame_header_t */
+  volatile uint32_t sof_divider;   /* tagging divider in effect, 0 = off */
   volatile uint32_t calib_xtal_nominal;
   volatile int32_t  calib_ppb;
   volatile uint32_t calib_source;

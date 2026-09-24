@@ -41,7 +41,7 @@
 
 #include "adchs.h"
 #include "airspy_debug.h"
-#include "pps.h"
+#include "timing.h"
 
 #include "m0_bin.h"
 #include "m0s_bin.h"
@@ -78,6 +78,8 @@ volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
 volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
 volatile airspy_mcore_t *set_framing = (airspy_mcore_t *)((&cm0_data_share)+3);
+volatile airspy_mcore_t *set_sof = (airspy_mcore_t *)((&cm0_data_share)+4);
+volatile uint32_t *set_sof_divider = (uint32_t *)((&cm0_data_share)+5);
 
 volatile int first_start = 0;
 
@@ -261,6 +263,16 @@ static __inline__ void ack_framing(void)
   set_framing->raw = 0;
 }
 
+static __inline__ uint8_t get_sof(void)
+{
+  return(set_sof->cmd);
+}
+
+static __inline__ void ack_sof(void)
+{
+  set_sof->raw = 0;
+}
+
 static void publish_stream_format(void)
 {
   uint32_t header = use_framing ? AIRSPY_FRAME_HEADER_SIZE : 0;
@@ -303,7 +315,7 @@ void set_framing_state(uint8_t state)
 
 static uint32_t adchs_sample_rate_hz;
 
-static uint32_t pps_timer_clock_hz(void)
+static uint32_t timing_timer_clock_hz(void)
 {
   const airspy_pll1_hs_t* pll1 = &airspy_conf->airspy_m4_init_conf.pll1_hs;
   uint32_t gp_clkin_hz = (airspy_conf->conf_hw.hardware_type & HW_FEATURE_SI5351C) ? 20000000 : 24000000;
@@ -341,7 +353,7 @@ void adchs_start(uint8_t chan_num)
   ADCHS_DMA_init(use_packing, stream->header_bytes);
 
   led_on();
-  pps_stream_start(adchs_sample_rate_hz, pps_timer_clock_hz());
+  timing_stream_start(adchs_sample_rate_hz, timing_timer_clock_hz());
   LPC_ADCHS->TRIGGER = 1;
   __asm("dsb");
   
@@ -355,7 +367,7 @@ void adchs_stop(void)
   __asm__("cpsid i");
 
   ADCHS_deinit();
-  pps_stream_stop();
+  timing_stream_stop();
 
 //  cpu_clock_pll1_low_speed(&airspy_conf->airspy_m4_init_conf.pll1_ls);
 
@@ -516,6 +528,12 @@ void m0core_isr(void)
     ack_framing();
   }
 
+  if(get_sof() == SET_SOF_CMD)
+  {
+    timing_set_sof_divider(*set_sof_divider);
+    ack_sof();
+  }
+
   adchs_start_stop_cmd = get_start_stop_adchs();
   switch(adchs_start_stop_cmd)
   {
@@ -605,7 +623,7 @@ int main(void)
 
   adchs_sample_rate_hz = airspy_conf->airspy_m0_m4_conf[0].airspy_m0_conf.r820t_if_freq * 4;
   ADCHS_set_sample_rate(adchs_sample_rate_hz);
-  pps_init();
+  timing_init();
   AIRSPY_DEBUG_MAILBOX->pending = 0; /* RAM is not cleared at boot */
 
   adchs_stop();
@@ -618,6 +636,7 @@ int main(void)
   ack_samplerate();
   ack_packing();
   ack_framing();
+  ack_sof();
 
   /* Start M0 */
   m0_startup();

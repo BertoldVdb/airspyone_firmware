@@ -68,6 +68,8 @@ volatile airspy_mcore_t *start_adchs = (airspy_mcore_t *)(&cm0_data_share);
 volatile airspy_mcore_t *set_samplerate = (airspy_mcore_t *)((&cm0_data_share)+1);
 volatile airspy_mcore_t *set_packing = (airspy_mcore_t *)((&cm0_data_share)+2);
 volatile airspy_mcore_t *set_framing = (airspy_mcore_t *)((&cm0_data_share)+3);
+volatile airspy_mcore_t *set_sof = (airspy_mcore_t *)((&cm0_data_share)+4);
+volatile uint32_t *set_sof_divider = (uint32_t *)((&cm0_data_share)+5);
 
 #define MASTER_TXEV_FLAG  ((uint32_t *) 0x40043130)
 #define MASTER_TXEV_QUIT()  { *MASTER_TXEV_FLAG = 0x0; }
@@ -140,6 +142,20 @@ void set_framing_m4(uint8_t state)
   }
 }
 
+void set_sof_divider_m4(uint32_t divider)
+{
+  *set_sof_divider = divider;
+  set_sof->cmd = SET_SOF_CMD;
+
+  signal_sev();
+
+  while(1)
+  {
+    if(set_sof->raw == 0)
+      break;
+  }
+}
+
 static void stream_write_header(uint8_t* chunk, uint32_t chunk_index, uint32_t chunk_samples, uint32_t chunk_bytes)
 {
   airspy_frame_header_t* h = (airspy_frame_header_t*)chunk;
@@ -165,6 +181,20 @@ static void stream_write_header(uint8_t* chunk, uint32_t chunk_index, uint32_t c
       h->pps_fraction = stream->pps_fraction;
       h->pps_count = stream->pps_count;
       s2 = stream->pps_seq;
+    } while(((s1 != s2) || (s1 & 1)) && --tries);
+  }
+  {
+    uint32_t s1, s2;
+    uint32_t tries = 16;
+    do
+    {
+      s1 = stream->sof_seq;
+      h->sof_sample_index_lo = stream->sof_index_lo;
+      h->sof_sample_index_hi = stream->sof_index_hi;
+      h->sof_fraction = stream->sof_fraction;
+      h->sof_frame = stream->sof_frame;
+      h->sof_count = stream->sof_count;
+      s2 = stream->sof_seq;
     } while(((s1 != s2) || (s1 & 1)) && --tries);
   }
   h->uart_len = (uint8_t)airspy_uart_read(h->uart_data, AIRSPY_FRAME_UART_BYTES);
@@ -220,6 +250,7 @@ void ADCHS_stop(uint8_t conf_num)
   r820t_standby();
   start_stop_adchs_m4(conf_num, STOP_ADCHS_CMD);
   set_framing_m4(0);
+  set_sof_divider_m4(0);
 
   /* Re-Init I2C0 & I2C1 after PLL1 frequency is modified */
   i2c0_init(airspy_conf->i2c_conf.i2c0_pll1_ls_hs_conf_val); /* Si5351C I2C peripheral */

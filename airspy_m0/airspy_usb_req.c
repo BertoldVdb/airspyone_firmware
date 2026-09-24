@@ -1001,6 +1001,9 @@ const usb_transfer_stage_t stage)
     stream_status_buffer.usb_errors = usb_queue_transfer_errors;
     stream_status_buffer.adc_overflows = stream->adc_overflows;
     stream_status_buffer.pps_count = stream->pps_count;
+    stream_status_buffer.sof_count = stream->sof_count;
+    stream_status_buffer.sof_edges = stream->sof_edges;
+    stream_status_buffer.sof_divider = stream->sof_divider;
 
     if(endpoint->setup.length < length)
       length = endpoint->setup.length;
@@ -1081,6 +1084,18 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
     if(!airspy_uart_available())
       return USB_REQUEST_STATUS_STALL;
     airspy_uart_init(baud);
+    usb_transfer_schedule_ack(endpoint->in);
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
+usb_request_status_t usb_vendor_request_set_sof_divider(
+usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+  if(stage == USB_TRANSFER_STAGE_SETUP)
+  {
+    uint32_t divider = ((uint32_t)endpoint->setup.index << 16) | endpoint->setup.value;
+    set_sof_divider_m4(divider);
     usb_transfer_schedule_ack(endpoint->in);
   }
   return USB_REQUEST_STATUS_OK;
@@ -1281,6 +1296,7 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_WATCHDOG] = usb_vendor_request_watchdog;
   vendor_request_handler[AIRSPY_SET_UART_BAUD] = usb_vendor_request_set_uart_baud;
   vendor_request_handler[AIRSPY_UART_WRITE] = usb_vendor_request_uart_write;
+  vendor_request_handler[AIRSPY_SET_SOF_DIVIDER] = usb_vendor_request_set_sof_divider;
   vendor_request_handler[AIRSPY_SET_CALIBRATION] = usb_vendor_request_set_calibration;
   vendor_request_handler[AIRSPY_GET_CALIBRATION] = usb_vendor_request_get_calibration;
   vendor_request_handler[AIRSPY_MEM_READ] = usb_vendor_request_mem_read;

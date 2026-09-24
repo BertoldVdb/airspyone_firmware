@@ -24,7 +24,7 @@ BINARY = airspy_rom_to_ram
 
 SRC_DIR = airspy_m4
 
-SRC = airspy_m4.c adchs.c pps.c
+SRC = airspy_m4.c adchs.c timing.c
 
 OBJ = m0_bin.o m0s_bin.o
 

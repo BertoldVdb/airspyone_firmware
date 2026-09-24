@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Benjamin Vernoux <bvernoux@airspy.com>
+ * Copyright 2026 Bertold Van den Bergh <vandenbergh@bertold.org>
  *
  * This file is part of AirSpy.
  *
@@ -19,25 +19,17 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __AIRSPY_M0_H__
-#define __AIRSPY_M0_H__
+/* Timestamps of events in ADC sample units: the PPS input and the USB Start-Of-Frame */
+#ifndef __TIMING_H__
+#define __TIMING_H__
 
-#include "airspy_commands.h"
-#include "airspy_stream.h"
-#include "usb_type.h"
+#include <stdint.h>
 
-void ADCHS_start(uint8_t conf_num);
-void ADCHS_stop(uint8_t conf_num);
+void timing_init(void);
+/* Call with interrupts disabled immediately before the ADC trigger */
+void timing_stream_start(uint32_t sample_rate_hz, uint32_t timer_clock_hz);
+void timing_stream_stop(void);
+/* Tag the first SOF (microframe 0) of every USB frame whose number is a multiple of the divider, 0 turns it off */
+void timing_set_sof_divider(uint32_t divider);
 
-void set_samplerate_m4(uint8_t conf_num);
-void set_packing_m4(uint8_t state);
-void set_framing_m4(uint8_t state);
-void set_sof_divider_m4(uint32_t divider);
-
-/* Ring buffer state shared with the M4 */
-extern volatile airspy_stream_state_t * const stream;
-
-/* Bulk IN completion callback, USB ISR context */
-void usb_bulk_in_transfer_complete(usb_endpoint_t* const endpoint);
-
-#endif//__AIRSPY_M0_H__
+#endif
