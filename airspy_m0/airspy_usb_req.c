@@ -484,7 +484,7 @@ const usb_transfer_stage_t stage)
 
   if( stage == USB_TRANSFER_STAGE_SETUP )
   {
-    if(endpoint->setup.index > 2)
+    if(endpoint->setup.index > AIRSPY_PACKING_8BIT || endpoint->setup.index == 2)
     {
       return USB_REQUEST_STATUS_STALL;
     }else
@@ -1238,6 +1238,7 @@ usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 }
 
 usb_request_handler_fn vendor_request_handler[AIRSPY_CMD_MAX+1];
+usb_request_handler_fn ext_vendor_request_handler[AIRSPY_EXT_CMD_MAX-AIRSPY_EXT_CMD_BASE+1];
 
 void airspy_usb_req_init(void)
 {
@@ -1291,39 +1292,44 @@ void airspy_usb_req_init(void)
   vendor_request_handler[AIRSPY_SET_PACKING] = usb_vendor_request_set_packing_command;
 
   vendor_request_handler[AIRSPY_SPIFLASH_ERASE_SECTOR] = usb_vendor_request_erase_sector_spiflash;
-  vendor_request_handler[AIRSPY_GET_STREAM_STATUS] = usb_vendor_request_get_stream_status;
-  vendor_request_handler[AIRSPY_SET_FRAMING] = usb_vendor_request_set_framing_command;
-  vendor_request_handler[AIRSPY_WATCHDOG] = usb_vendor_request_watchdog;
-  vendor_request_handler[AIRSPY_SET_UART_BAUD] = usb_vendor_request_set_uart_baud;
-  vendor_request_handler[AIRSPY_UART_WRITE] = usb_vendor_request_uart_write;
-  vendor_request_handler[AIRSPY_SET_SOF_DIVIDER] = usb_vendor_request_set_sof_divider;
-  vendor_request_handler[AIRSPY_SET_CALIBRATION] = usb_vendor_request_set_calibration;
-  vendor_request_handler[AIRSPY_GET_CALIBRATION] = usb_vendor_request_get_calibration;
-  vendor_request_handler[AIRSPY_MEM_READ] = usb_vendor_request_mem_read;
-  vendor_request_handler[AIRSPY_MEM_WRITE] = usb_vendor_request_mem_write;
-  vendor_request_handler[AIRSPY_CALL] = usb_vendor_request_call;
+  ext_vendor_request_handler[AIRSPY_GET_STREAM_STATUS-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_get_stream_status;
+  ext_vendor_request_handler[AIRSPY_SET_FRAMING-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_set_framing_command;
+  ext_vendor_request_handler[AIRSPY_WATCHDOG-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_watchdog;
+  ext_vendor_request_handler[AIRSPY_SET_UART_BAUD-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_set_uart_baud;
+  ext_vendor_request_handler[AIRSPY_UART_WRITE-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_uart_write;
+  ext_vendor_request_handler[AIRSPY_SET_SOF_DIVIDER-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_set_sof_divider;
+  ext_vendor_request_handler[AIRSPY_SET_CALIBRATION-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_set_calibration;
+  ext_vendor_request_handler[AIRSPY_GET_CALIBRATION-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_get_calibration;
+  ext_vendor_request_handler[AIRSPY_MEM_READ-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_mem_read;
+  ext_vendor_request_handler[AIRSPY_MEM_WRITE-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_mem_write;
+  ext_vendor_request_handler[AIRSPY_CALL-AIRSPY_EXT_CMD_BASE] = usb_vendor_request_call;
 }
 
 usb_request_status_t usb_vendor_request(usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
 {
   usb_request_status_t status = USB_REQUEST_STATUS_STALL;
-  
+  usb_request_handler_fn handler = 0;
+
   if( endpoint->setup.request <= AIRSPY_CMD_MAX )
   {
-    usb_request_handler_fn handler = vendor_request_handler[endpoint->setup.request];
-    if( handler )
-    {
-      status = handler(endpoint, stage);
-    }
+    handler = vendor_request_handler[endpoint->setup.request];
+  }else if( endpoint->setup.request >= AIRSPY_EXT_CMD_BASE && endpoint->setup.request <= AIRSPY_EXT_CMD_MAX )
+  {
+    handler = ext_vendor_request_handler[endpoint->setup.request - AIRSPY_EXT_CMD_BASE];
+  }
+
+  if( handler )
+  {
+    status = handler(endpoint, stage);
   }else
   {
     if( stage == USB_TRANSFER_STAGE_SETUP )
     {
-    status = USB_REQUEST_STATUS_STALL;
-  } else
-  {
-    status = USB_REQUEST_STATUS_OK;
-  }
+      status = USB_REQUEST_STATUS_STALL;
+    } else
+    {
+      status = USB_REQUEST_STATUS_OK;
+    }
   }
   return status;
 }

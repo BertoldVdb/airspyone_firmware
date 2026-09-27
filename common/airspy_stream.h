@@ -52,7 +52,7 @@ static inline uint8_t* airspy_stream_slot(uint32_t slot)
 #define AIRSPY_STREAM_CHUNK_BYTES_UNPACKED  (2 * AIRSPY_STREAM_SLOT_SIZE)
 /* Packed: one chunk is one slot */
 #define AIRSPY_STREAM_CHUNK_BYTES_PACKED    ((AIRSPY_STREAM_SLOT_SIZE / 4) * 3)
-/* 8-bit mode (packing 2) */
+/* 8-bit mode (packing 3) */
 #define AIRSPY_STREAM_CHUNK_BYTES_8BIT      (AIRSPY_STREAM_SLOT_SIZE / 2)
 
 /* Transfers the M0 can hold in the USB controller at once */

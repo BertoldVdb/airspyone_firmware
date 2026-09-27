@@ -36,7 +36,9 @@ typedef enum
 } receiver_mode_t;
 
 // Commands (usb vendor request) shared between Firmware and Host.
-#define AIRSPY_CMD_MAX (38)
+#define AIRSPY_CMD_MAX (27)
+#define AIRSPY_EXT_CMD_BASE (0x80)
+#define AIRSPY_EXT_CMD_MAX (0x8A)
 typedef enum
 {
   AIRSPY_INVALID                    = 0 ,
@@ -66,19 +68,22 @@ typedef enum
   AIRSPY_GPIODIR_READ               = 24,
   AIRSPY_GET_SAMPLERATES            = 25,
   AIRSPY_SET_PACKING                = 26,
-  AIRSPY_SPIFLASH_ERASE_SECTOR      = 27,
-  AIRSPY_GET_STREAM_STATUS          = 28,
-  AIRSPY_SET_FRAMING                = 29,
-  AIRSPY_WATCHDOG                   = 30,
-  AIRSPY_SET_UART_BAUD              = 31, /* wValue = baud & 0xFFFF, wIndex = baud >> 16 */
-  AIRSPY_UART_WRITE                 = 32, /* OUT data = bytes to transmit (max 64) */
-  AIRSPY_SET_CALIBRATION = 33, /* wValue|wIndex<<16 = crystal correction in ppb (int32), applied at once */
-  AIRSPY_GET_CALIBRATION = 34, /* IN: airspy_calibration_t */
+  AIRSPY_SPIFLASH_ERASE_SECTOR      = AIRSPY_CMD_MAX,
+  /* 28..33 are taken by HydraSDR (SET_RF_PORT, GET_CAPABILITIES, SET_BANDWIDTH, GET_BANDWIDTHS,
+     GET_TEMPERATURE, SET_GAIN): not implemented here, they stall */
+  /* Stream metadata, timing and debug commands, the same numbers as on the HydraSDR RFOne */
+  AIRSPY_GET_STREAM_STATUS          = AIRSPY_EXT_CMD_BASE + 0,
+  AIRSPY_SET_FRAMING                = AIRSPY_EXT_CMD_BASE + 1,
+  AIRSPY_WATCHDOG                   = AIRSPY_EXT_CMD_BASE + 2,
+  AIRSPY_SET_UART_BAUD              = AIRSPY_EXT_CMD_BASE + 3, /* wValue = baud & 0xFFFF, wIndex = baud >> 16 */
+  AIRSPY_UART_WRITE                 = AIRSPY_EXT_CMD_BASE + 4, /* OUT data = bytes to transmit (max 64) */
+  AIRSPY_SET_CALIBRATION            = AIRSPY_EXT_CMD_BASE + 5, /* wValue|wIndex<<16 = crystal correction in ppb (int32), applied at once */
+  AIRSPY_GET_CALIBRATION            = AIRSPY_EXT_CMD_BASE + 6, /* IN: airspy_calibration_t */
   /* Debug access, see airspy_debug: */
-  AIRSPY_MEM_READ = 35, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
-  AIRSPY_MEM_WRITE = 36, /* OUT: same addressing, data = bytes to write */
-  AIRSPY_CALL = 37, /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
-  AIRSPY_SET_SOF_DIVIDER = AIRSPY_CMD_MAX /* wValue | wIndex << 16 = divider: tag the first SOF of every USB frame whose number is a multiple of it, 0 = off; cleared at every stream stop */
+  AIRSPY_MEM_READ                   = AIRSPY_EXT_CMD_BASE + 7, /* IN: wValue | wIndex << 16 = address, wLength <= 64 bytes */
+  AIRSPY_MEM_WRITE                  = AIRSPY_EXT_CMD_BASE + 8, /* OUT: same addressing, data = bytes to write */
+  AIRSPY_CALL                       = AIRSPY_EXT_CMD_BASE + 9, /* OUT: airspy_call_request_t runs a function; IN: airspy_call_result_t */
+  AIRSPY_SET_SOF_DIVIDER            = AIRSPY_EXT_CMD_MAX /* wValue | wIndex << 16 = divider: tag the first SOF of every USB frame whose number is a multiple of it, 0 = off; cleared at every stream stop */
 } airspy_vendor_request;
 
 /* Reply to AIRSPY_GET_STREAM_STATUS: 8 little-endian uint32 */
@@ -126,10 +131,10 @@ typedef struct
 } airspy_stream_status_t;
 
 #define AIRSPY_FRAME_HEADER_SIZE (96)
-#define AIRSPY_FRAME_MAGIC (0x59505341) /* "ASPY" */
+#define AIRSPY_FRAME_MAGIC (0x42445642)
 #define AIRSPY_FRAME_UART_BYTES (15) /* UART bytes per chunk header */
 #define AIRSPY_FRAME_FLAG_PACKED (1 << 0) /* 12-bit packed samples (packing 1) */
-#define AIRSPY_FRAME_FLAG_8BIT   (1 << 1) /* one byte per sample, the top 8 bits (packing 2) */
+#define AIRSPY_FRAME_FLAG_8BIT   (1 << 1) /* one byte per sample, the top 8 bits (packing 3) */
 
 typedef struct
 {

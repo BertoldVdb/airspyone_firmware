@@ -45,6 +45,18 @@ t_gpdma_lli adchs_dma_lli[ADCHS_DMA_NUM_LLI] __attribute__ ((aligned(16)));
 
 void ADCHS_DMA_init_stop(void)
 {
+  uint32_t i;
+
+  /* Halt channel 0 and let its FIFO drain before disabling it: stopping
+     the controller under a running channel can leave the next stream
+     stuck at its second linked-list item */
+  if(LPC_GPDMA->C0CONFIG & 0x1)
+  {
+    LPC_GPDMA->C0CONFIG |= (0x1 << 18); /* Halt */
+    for(i = 0; i < 100000 && (LPC_GPDMA->C0CONFIG & (0x1 << 17)); i++); /* Active */
+    LPC_GPDMA->C0CONFIG &= ~0x1;
+  }
+
   /* clear all interrupts on channel 0 */
   LPC_GPDMA->INTTCCLEAR = 0x01;
   LPC_GPDMA->INTERRCLR = 0x01;
@@ -75,7 +87,7 @@ void ADCHS_DMA_init(uint8_t packed, uint32_t header_bytes)
     uint32_t offset = 0;
     uint32_t bytes = slot_bytes;
 
-    if(packed == 2)
+    if(packed == AIRSPY_PACKING_8BIT)
     {
       offset = header_bytes;
       bytes = slot_bytes - 2 * header_bytes;

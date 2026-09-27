@@ -285,7 +285,7 @@ static void publish_stream_format(void)
     stream->ring_chunks = AIRSPY_STREAM_NUM_SLOTS / 2;
     stream->chunk_samples = (AIRSPY_STREAM_CHUNK_BYTES_UNPACKED - header) / 2;
   }
-  else if(use_packing == 2)
+  else if(use_packing == AIRSPY_PACKING_8BIT)
   {
     stream->chunk_bytes = AIRSPY_STREAM_CHUNK_BYTES_8BIT;
     stream->chunk_slots = 1;
@@ -303,7 +303,7 @@ static void publish_stream_format(void)
 
 void set_packing_state(uint8_t state)
 {
-  use_packing = (state > 2) ? 1 : state; /* 0 = 16-bit, 1 = 12-bit packed, 2 = 8-bit */
+  use_packing = (state == AIRSPY_PACKING_8BIT) ? AIRSPY_PACKING_8BIT : (state ? AIRSPY_PACKING_ON : AIRSPY_PACKING_OFF);
   publish_stream_format();
 }
 
@@ -673,7 +673,7 @@ int main(void)
         uint32_t chunk = packed_chunks;
         uint32_t* slot = (uint32_t*)(airspy_stream_slot(chunk % AIRSPY_STREAM_NUM_SLOTS) + stream->header_bytes);
 
-        if(use_packing == 2)
+        if(use_packing == AIRSPY_PACKING_8BIT)
           pack8(slot, slot, stream->chunk_samples);
         else
           pack(slot, slot, stream->chunk_samples);

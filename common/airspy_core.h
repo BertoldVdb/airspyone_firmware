@@ -195,6 +195,14 @@ typedef struct
   };
 } airspy_mcore_t;
 
+typedef enum
+{
+  AIRSPY_PACKING_OFF = 0, /* 16-bit samples */
+  AIRSPY_PACKING_ON = 1, /* 12-bit packed */
+  /* 2 is the HydraSDR RFOne's 12-bit mode with a chunk counter, not supported here */
+  AIRSPY_PACKING_8BIT = 3 /* one byte per sample, the top 8 bits */
+} airspy_packing_type;
+
 void delay(uint32_t duration);
 
 void cpu_reset(void);
